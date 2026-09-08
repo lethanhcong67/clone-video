@@ -1,0 +1,923 @@
+import React, { useState, useEffect, useRef } from 'react';
+import confetti from 'canvas-confetti';
+import {
+  Sparkles,
+  Layers,
+  CheckCircle2,
+  AlertCircle,
+  HelpCircle,
+} from 'lucide-react';
+import { Header } from './components/Header';
+import { CharacterSelector } from './components/CharacterSelector';
+import { OutfitSelector } from './components/OutfitSelector';
+import { SubtitleSettings } from './components/SubtitleSettings';
+import { BatchControls } from './components/BatchControls';
+import { BatchPipelineRows } from './components/BatchPipelineRows';
+import { ApplyToAllBanner } from './components/ApplyToAllBanner';
+import { GuideModal } from './components/GuideModal';
+import { ApiSettingsModal } from './components/ApiSettingsModal';
+import { ApiStatusBanner } from './components/ApiStatusBanner';
+import { ApiLogModal } from './components/ApiLogModal';
+import { VideoSceneExtractor } from './components/VideoSceneExtractor';
+import { BatchImageItem, BatchSettings, OutfitReference, ApiConfig, AppliedReplacementConfig, GptImageConfig, KlingVideoConfig } from './types';
+import { downloadAllAsZip } from './utils/imageUtils';
+import { createSampleBatchItem, generateFallbackResultImage } from './utils/sampleGenerator';
+
+const API_STORAGE_KEY = 'ai_image_api_config_v2';
+
+const DEFAULT_GPT_CONFIG: GptImageConfig = {
+  apiKey: '',
+  baseUrl: 'https://www.mnapi.com/v1/images/edits',
+  model: 'gpt-image-2',
+  size: '1152x2048',
+  quality: 'medium',
+  isCustomKeyActive: true,
+  isValidated: false,
+};
+
+export const DEFAULT_KLING_NEGATIVE_PROMPT = '';
+
+export const DEFAULT_KLING_PROMPT =
+  'Người mẫu cử động tự nhiên, giữ cố định thiết kế sản phẩm và họa tiết trang phục, ánh sáng điện ảnh cao cấp, 4K';
+
+const DEFAULT_KLING_CONFIG: KlingVideoConfig = {
+  apiKey: '',
+  baseUrl: 'https://api.klingai.com',
+  model: 'kling-v2-6',
+  mode: 'pro',
+  duration: '5',
+  aspectRatio: '9:16',
+  multiShot: false,
+  cfgScale: 0.6,
+  negativePrompt: '',
+  watermarkEnabled: false,
+  isCustomKeyActive: false,
+  isValidated: false,
+};
+
+function loadSavedApiConfig(): ApiConfig {
+  try {
+    const saved = localStorage.getItem(API_STORAGE_KEY) || localStorage.getItem('gemini_image_api_config');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const savedBaseUrl = parsed.gptImage?.baseUrl;
+      const effectiveBaseUrl =
+        !savedBaseUrl || savedBaseUrl === 'https://api.openai.com/v1'
+          ? 'https://www.mnapi.com/v1/images/edits'
+          : savedBaseUrl;
+
+      return {
+        activeProvider: parsed.activeProvider || 'gpt-image-2',
+        apiKey: parsed.apiKey || '',
+        model: parsed.model || 'gemini-3.1-flash-image',
+        isCustomKeyActive: Boolean(parsed.isCustomKeyActive && parsed.apiKey),
+        isValidated: Boolean(parsed.isValidated),
+        lastValidatedAt: parsed.lastValidatedAt,
+        gptImage: {
+          apiKey: parsed.gptImage?.apiKey || '',
+          baseUrl: effectiveBaseUrl,
+          model: parsed.gptImage?.model || 'gpt-image-2',
+          size: parsed.gptImage?.size || '1152x2048',
+          quality: parsed.gptImage?.quality === 'standard' ? 'medium' : (parsed.gptImage?.quality || 'medium'),
+          isCustomKeyActive: Boolean(parsed.gptImage?.apiKey),
+          isValidated: Boolean(parsed.gptImage?.isValidated),
+          lastValidatedAt: parsed.gptImage?.lastValidatedAt,
+        },
+        kling: {
+          apiKey: parsed.kling?.apiKey || '',
+          accessKey: parsed.kling?.accessKey,
+          secretKey: parsed.kling?.secretKey,
+          baseUrl: parsed.kling?.baseUrl || 'https://api.klingai.com',
+          model: parsed.kling?.model || 'kling-v2-6',
+          mode: parsed.kling?.mode || 'pro',
+          duration: parsed.kling?.duration || '5',
+          aspectRatio: parsed.kling?.aspectRatio || '9:16',
+          multiShot: parsed.kling?.multiShot !== undefined ? parsed.kling.multiShot : false,
+          cfgScale: parsed.kling?.cfgScale !== undefined ? parsed.kling.cfgScale : 0.6,
+          negativePrompt:
+            parsed.kling?.negativePrompt && !parsed.kling.negativePrompt.includes('camera movement')
+              ? parsed.kling.negativePrompt
+              : '',
+          watermarkEnabled: parsed.kling?.watermarkEnabled !== undefined ? parsed.kling.watermarkEnabled : false,
+          isCustomKeyActive: Boolean(parsed.kling?.apiKey || (parsed.kling?.accessKey && parsed.kling?.secretKey)),
+          isValidated: Boolean(parsed.kling?.isValidated),
+          lastValidatedAt: parsed.kling?.lastValidatedAt,
+        },
+      };
+    }
+  } catch (e) {
+    console.warn('Lỗi đọc API config từ storage:', e);
+  }
+  return {
+    activeProvider: 'gpt-image-2',
+    apiKey: '',
+    model: 'gemini-3.1-flash-image',
+    isCustomKeyActive: false,
+    isValidated: false,
+    gptImage: DEFAULT_GPT_CONFIG,
+    kling: DEFAULT_KLING_CONFIG,
+  };
+}
+
+export default function App() {
+  const [items, setItems] = useState<BatchImageItem[]>([]);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [uploadedOutfits, setUploadedOutfits] = useState<OutfitReference[]>([]);
+  const uploadedOutfit = uploadedOutfits[0] || null;
+
+  const handleAddUploadedOutfits = (newOutfits: OutfitReference[]) => {
+    setUploadedOutfits((prev) => [...prev, ...newOutfits]);
+  };
+
+  const handleRemoveUploadedOutfit = (id: string) => {
+    setUploadedOutfits((prev) => prev.filter((o) => o.id !== id));
+  };
+
+  const handleClearUploadedOutfits = () => {
+    setUploadedOutfits([]);
+  };
+
+  // API Config state with local storage persistence
+  const [apiConfig, setApiConfig] = useState<ApiConfig>(loadSavedApiConfig);
+  const [isApiModalOpen, setIsApiModalOpen] = useState(false);
+
+  // Settings
+  const [settings, setSettings] = useState<BatchSettings>({
+    enableCharacter: false, // Default is FALSE: do NOT add or alter characters unless explicitly requested
+    characterPrompt: '',
+    enableOutfit: true,
+    productName: '',
+    outfitPrompt: 'Thay thế chính xác mẫu sản phẩm theo ảnh tham chiếu ref2 vào hình gốc ref1, xóa toàn bộ chi tiết cũ, giữ nguyên phông nền và người mẫu',
+    removeSubtitles: true,
+    preservePose: true,
+    preserveBackground: true,
+    backgroundPrompt: '',
+    stylePreset: 'photorealistic',
+    aspectRatio: '9:16',
+    concurrency: 5, // Concurrency limit: always runs up to 5 images simultaneously
+    variationsPerItem: 1, // Number of variation images generated per image (1 to 5, max 5)
+  });
+
+  // Processing state
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentProcessingIndex, setCurrentProcessingIndex] = useState(0);
+  const [activeProcessingIds, setActiveProcessingIds] = useState<string[]>([]);
+  const isCancelledRef = useRef(false);
+
+  // API Status & Modals
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
+  const [hasKlingKey, setHasKlingKey] = useState(false);
+  const [apiModalTab, setApiModalTab] = useState<'gemini' | 'gpt-image-2' | 'kling'>('gpt-image-2');
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [latestApiLog, setLatestApiLog] = useState<any>(null);
+  const [notification, setNotification] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
+
+  // Check health and API key on mount
+  useEffect(() => {
+    fetch('/api/health')
+      .then((res) => res.json())
+      .then((data) => {
+        setHasApiKey(Boolean(data.hasApiKey));
+        setHasOpenAiKey(Boolean(data.hasOpenAiKey));
+        setHasKlingKey(Boolean(data.hasKlingKey));
+      })
+      .catch((err) => {
+        console.warn('API health check error:', err);
+      });
+  }, []);
+
+  const showToast = (message: string, type: 'info' | 'success' | 'warning' = 'info') => {
+    setNotification({ message, type });
+    setTimeout(() => {
+      setNotification(null);
+    }, 4000);
+  };
+
+  // Quick load 3 sample images with subtitles
+  const handleLoadSamples = () => {
+    const sample1 = createSampleBatchItem(
+      'sample_01',
+      'Canh_Phim_Dien_Anh_01.jpg',
+      'Nhân vật cũ: Chàng trai áo sơ mi cũ',
+      'Sơ mi rách bạc màu',
+      '[SUB] "Định mệnh đã đưa chúng ta gặp lại nhau ở đây..."',
+      '#1e1b4b',
+      '#312e81'
+    );
+
+    const sample2 = createSampleBatchItem(
+      'sample_02',
+      'Phim_Co_Trang_Kiem_Hiep_02.jpg',
+      'Nhân vật cũ: Võ sĩ trung niên',
+      'Vải gai thô sơ',
+      '[EP 12 - 42:15] "Ta nhất định phải tìm ra sự thật!"',
+      '#450a0a',
+      '#7f1d1d'
+    );
+
+    const sample3 = createSampleBatchItem(
+      'sample_03',
+      'Poster_Phim_Chieu_Rap_03.jpg',
+      'Nhân vật cũ: Cô gái thành thị',
+      'Áo thun đơn giản',
+      '© Netflix Official - Vietsub by MovieSubTeam',
+      '#064e3b',
+      '#065f46'
+    );
+
+    setItems([sample1, sample2, sample3]);
+    setSelectedItemId(sample1.id);
+    showToast('Đã nạp 3 ảnh mẫu kèm phụ đề sẵn sàng thử nghiệm!', 'success');
+  };
+
+  // Add new items from upload zone
+  const handleAddItems = (newItems: BatchImageItem[]) => {
+    // Crucial: Character is ONLY enabled if explicitly toggled on AND has a non-empty character prompt!
+    const isCharActiveByDefault = Boolean(settings.enableCharacter && settings.characterPrompt.trim());
+
+    const defaultAppliedConfig: AppliedReplacementConfig = {
+      enableCharacter: isCharActiveByDefault,
+      enableOutfit: true,
+      enableBackground: Boolean(settings.backgroundPrompt?.trim()),
+      characterPrompt: settings.characterPrompt,
+      outfitPrompt: settings.outfitPrompt,
+      backgroundPrompt: settings.backgroundPrompt || '',
+      productReferences: uploadedOutfits.length > 0 ? [...uploadedOutfits] : undefined,
+      outfitImageUrl: uploadedOutfit?.previewUrl || uploadedOutfit?.dataUrl || null,
+      outfitImageName: uploadedOutfit?.name || null,
+      preservePose: settings.preservePose,
+      appliedAt: Date.now(),
+    };
+
+    const enhancedItems = newItems.map((item) => ({
+      ...item,
+      appliedConfig: item.appliedConfig || { ...defaultAppliedConfig },
+    }));
+
+    setItems((prev) => [...prev, ...enhancedItems]);
+    if (!selectedItemId && enhancedItems.length > 0) {
+      setSelectedItemId(enhancedItems[0].id);
+    }
+    showToast(`Đã thêm ${newItems.length} hình ảnh vào hàng đợi.`, 'info');
+  };
+
+  // Apply character and outfit/product replacement to ALL images
+  const handleApplyToAll = () => {
+    if (items.length === 0) {
+      showToast('Chưa có hình ảnh nào trong danh sách để áp dụng. Hãy tải ảnh lên trước.', 'warning');
+      return;
+    }
+
+    const isCharActive = Boolean(settings.enableCharacter && settings.characterPrompt.trim());
+
+    setItems((prev) =>
+      prev.map((item) => ({
+        ...item,
+        appliedConfig: {
+          // Explicitly follow settings.enableCharacter
+          enableCharacter: isCharActive,
+          enableOutfit: item.appliedConfig?.enableOutfit ?? true,
+          enableBackground: item.appliedConfig?.enableBackground ?? Boolean(settings.backgroundPrompt?.trim()),
+          characterPrompt: settings.characterPrompt,
+          productName: settings.productName,
+          outfitPrompt: settings.outfitPrompt,
+          backgroundPrompt: item.appliedConfig?.backgroundPrompt !== undefined ? item.appliedConfig.backgroundPrompt : (settings.backgroundPrompt || ''),
+          productReferences: uploadedOutfits.length > 0 ? [...uploadedOutfits] : undefined,
+          outfitImageUrl: uploadedOutfit?.previewUrl || uploadedOutfit?.dataUrl || null,
+          outfitImageName: uploadedOutfit?.name || null,
+          preservePose: settings.preservePose,
+          appliedAt: Date.now(),
+        },
+      }))
+    );
+
+    showToast(
+      isCharActive
+        ? `Đã đồng bộ nhân vật & ${uploadedOutfits.length > 1 ? `${uploadedOutfits.length} sản phẩm tham chiếu` : (settings.productName ? `sản phẩm "${settings.productName}"` : 'sản phẩm')} cho tất cả ${items.length} ảnh!`
+        : `Đã đồng bộ thay thế ${uploadedOutfits.length > 1 ? `${uploadedOutfits.length} sản phẩm tham chiếu [ref2, ref3...]` : (settings.productName ? `sản phẩm "${settings.productName}"` : 'sản phẩm')} (giữ nguyên người & ảnh gốc) cho tất cả ${items.length} ảnh!`,
+      'success'
+    );
+  };
+
+  // Remove single item
+  const handleRemoveItem = (id: string) => {
+    setItems((prev) => prev.filter((it) => it.id !== id));
+    if (selectedItemId === id) {
+      const remaining = items.filter((it) => it.id !== id);
+      setSelectedItemId(remaining.length > 0 ? remaining[0].id : null);
+    }
+  };
+
+  // Clear all
+  const handleClearAll = () => {
+    setItems([]);
+    setSelectedItemId(null);
+  };
+
+  // Reset entire workflow
+  const handleReset = () => {
+    setItems([]);
+    setSelectedItemId(null);
+    setUploadedOutfits([]);
+    setSettings({
+      characterPrompt: '',
+      productName: '',
+      outfitPrompt: 'Thay thế chính xác mẫu sản phẩm theo ảnh tham chiếu ref2 vào hình gốc ref1, xóa toàn bộ chi tiết cũ, giữ nguyên phông nền và người mẫu',
+      removeSubtitles: true,
+      preservePose: true,
+      preserveBackground: true,
+      stylePreset: 'photorealistic',
+      aspectRatio: '9:16',
+      concurrency: 5,
+      variationsPerItem: 1,
+      enableCharacter: false,
+      enableOutfit: true,
+    });
+    showToast('Đã làm mới lại toàn bộ ứng dụng.', 'info');
+  };
+
+  // Process a single image through server or local fallback
+  const processSingleImage = async (item: BatchImageItem, variationIndex = 0): Promise<string> => {
+    // Respect per-item appliedConfig first, then fallback to global settings
+    // Crucial rule: Character replacement is ONLY active if BOTH enabled AND a non-empty character prompt exists!
+    // If not enabled or no character prompt is specified, AI must NOT add or modify any character!
+    const hasCharPrompt = Boolean(
+      (item.appliedConfig?.characterPrompt && item.appliedConfig.characterPrompt.trim()) ||
+      (settings.characterPrompt && settings.characterPrompt.trim())
+    );
+    const itemWantsChar = item.appliedConfig?.enableCharacter ?? settings.enableCharacter;
+    const isCharacterEnabled = Boolean(itemWantsChar && hasCharPrompt);
+    const isOutfitEnabled = item.appliedConfig?.enableOutfit !== false;
+
+    const effectiveCharacterPrompt = isCharacterEnabled
+      ? (item.appliedConfig?.characterPrompt?.trim() || settings.characterPrompt.trim())
+      : '';
+    const effectiveProductName = item.appliedConfig?.productName?.trim() || settings.productName?.trim() || '';
+    let effectiveOutfitPrompt = isOutfitEnabled
+      ? (item.appliedConfig?.outfitPrompt?.trim() || settings.outfitPrompt.trim())
+      : '';
+    const effectiveOutfitImageBase64 = isOutfitEnabled
+      ? (item.appliedConfig?.outfitImageUrl || uploadedOutfit?.dataUrl || null)
+      : null;
+
+    // If prompt is empty, supply the exact required pattern
+    if (isOutfitEnabled && !effectiveOutfitPrompt) {
+      effectiveOutfitPrompt = `Thay thế chính xác ${effectiveProductName || 'mẫu sản phẩm'} theo ảnh tham chiếu ref2 vào hình gốc ref1, xóa toàn bộ chi tiết cũ, giữ nguyên phông nền và người mẫu`;
+    }
+
+    const hasItemBgConfig = item.appliedConfig?.enableBackground !== undefined;
+    const isBgEnabledForItem = hasItemBgConfig
+      ? Boolean(item.appliedConfig?.enableBackground)
+      : Boolean(settings.backgroundPrompt?.trim());
+
+    const effectiveBackgroundPrompt = isBgEnabledForItem
+      ? (item.appliedConfig?.backgroundPrompt !== undefined ? item.appliedConfig.backgroundPrompt.trim() : (settings.backgroundPrompt?.trim() || ''))
+      : '';
+    const effectivePreserveBackground = effectiveBackgroundPrompt
+      ? false
+      : (item.appliedConfig?.preserveBackground ?? settings.preserveBackground);
+    // When changing background, pose and position must strictly be preserved
+    const effectivePreservePose = effectiveBackgroundPrompt ? true : (item.appliedConfig?.preservePose ?? settings.preservePose);
+
+    // Resolve multiple product references for this row: image[ref1, ref2, ...]
+    const targetProductRefs: OutfitReference[] = (item.appliedConfig?.productReferences && item.appliedConfig.productReferences.length > 0)
+      ? item.appliedConfig.productReferences
+      : (uploadedOutfits.length > 0 ? uploadedOutfits : (uploadedOutfit ? [uploadedOutfit] : []));
+
+    const productImagesPayload = targetProductRefs.map((p, idx) => ({
+      data: p.dataUrl || p.previewUrl,
+      mimeType: p.mimeType || 'image/jpeg',
+      name: p.name || `ref${idx + 2}`,
+      refIndex: idx + 2,
+    }));
+
+    // Determine active provider and credentials
+    let providerToUse = apiConfig.activeProvider || 'gpt-image-2';
+    const rawGeminiKey = apiConfig.apiKey ? apiConfig.apiKey.trim() : '';
+    const rawGptKey = apiConfig.gptImage?.apiKey ? apiConfig.gptImage.apiKey.trim() : '';
+
+    // Smart auto-detection of API key
+    if (providerToUse === 'gemini' && rawGeminiKey.startsWith('sk-') && !rawGptKey) {
+      providerToUse = 'gpt-image-2';
+    } else if (providerToUse === 'gpt-image-2' && rawGptKey.startsWith('AIzaSy') && !rawGeminiKey) {
+      providerToUse = 'gemini';
+    }
+
+    const effectiveApiKey = rawGptKey || rawGeminiKey;
+
+    const requestPayload = {
+      provider: providerToUse,
+      variationIndex,
+      gptImageConfig: {
+        apiKey: effectiveApiKey ? 'sk-***' : undefined,
+        baseUrl: apiConfig.gptImage?.baseUrl || 'https://www.mnapi.com/v1/images/edits',
+        model: apiConfig.gptImage?.model || 'gpt-image-2',
+        quality: apiConfig.gptImage?.quality || 'standard',
+      },
+      productImagesCount: productImagesPayload.length,
+      originalMimeType: item.mimeType,
+      enableCharacter: isCharacterEnabled,
+      enableOutfit: isOutfitEnabled,
+      enableBackground: Boolean(effectiveBackgroundPrompt),
+      characterPrompt: effectiveCharacterPrompt,
+      productName: effectiveProductName,
+      outfitPrompt: effectiveOutfitPrompt,
+      backgroundPrompt: effectiveBackgroundPrompt,
+      removeSubtitles: settings.removeSubtitles,
+      preserveBackground: effectivePreserveBackground,
+      preservePose: effectivePreservePose,
+      stylePreset: settings.stylePreset,
+      aspectRatio: settings.aspectRatio,
+      selectedModel: apiConfig.model || 'gemini-3.1-flash-image',
+    };
+
+    console.log(
+      `%c[AI Image Generator] GỬI YÊU CẦU BODY TẠO ẢNH (Bản #${variationIndex + 1}) SANG SERVER:`,
+      'background: #1e3a8a; color: #60a5fa; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px;',
+      requestPayload
+    );
+
+    try {
+      const response = await fetch('/api/generate-replacement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: providerToUse,
+          variationIndex,
+          gptImageConfig: {
+            apiKey: effectiveApiKey,
+            baseUrl: apiConfig.gptImage?.baseUrl || 'https://www.mnapi.com/v1/images/edits',
+            model: apiConfig.gptImage?.model || 'gpt-image-2',
+            size: apiConfig.gptImage?.size || '1152x2048',
+            quality: apiConfig.gptImage?.quality || 'medium',
+          },
+          productImages: productImagesPayload,
+          originalImageBase64: item.dataUrl,
+          originalMimeType: item.mimeType,
+          enableCharacter: isCharacterEnabled,
+          enableOutfit: isOutfitEnabled,
+          enableBackground: Boolean(effectiveBackgroundPrompt),
+          characterPrompt: effectiveCharacterPrompt,
+          productName: effectiveProductName,
+          outfitPrompt: effectiveOutfitPrompt,
+          backgroundPrompt: effectiveBackgroundPrompt,
+          outfitImageBase64: effectiveOutfitImageBase64,
+          outfitMimeType: uploadedOutfit?.mimeType || 'image/jpeg',
+          removeSubtitles: settings.removeSubtitles,
+          preserveBackground: effectivePreserveBackground,
+          preservePose: effectivePreservePose,
+          stylePreset: settings.stylePreset,
+          aspectRatio: settings.aspectRatio,
+          apiKey: effectiveApiKey,
+          selectedModel: apiConfig.model || 'gemini-3.1-flash-image',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.loggedBody) {
+        console.log(
+          '%c[AI Image Generator] PHẢN HỒI KÈM LOG BODY TẠO ẢNH TỪ SERVER:',
+          'background: #064e3b; color: #34d399; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px;',
+          data.loggedBody
+        );
+        setLatestApiLog(data.loggedBody);
+      }
+
+      if (response.ok && data.imageUrl) {
+        return data.imageUrl;
+      } else {
+        const errorDetail = data.error || (data.needsApiKey ? 'Chưa cấu hình API Key hoặc Khóa API không hợp lệ.' : 'Máy chủ AI không thể tạo ảnh.');
+        if (data.needsApiKey) {
+          showToast(
+            providerToUse === 'gpt-image-2'
+              ? 'Vui lòng kiểm tra lại API Key GPT-Image-2 (sk-...) trong Cấu hình API.'
+              : 'Vui lòng kiểm tra lại API Key Gemini (AIzaSy...) trong Cấu hình API.',
+            'warning'
+          );
+        } else {
+          showToast(`Lỗi tạo ảnh: ${errorDetail}`, 'warning');
+        }
+        throw new Error(errorDetail);
+      }
+    } catch (err: any) {
+      console.error('Lỗi khi gọi API tạo ảnh:', err);
+      throw err;
+    }
+  };
+
+  // Start batch processing queue with concurrency (up to 5 concurrent images at once)
+  const handleStartProcessing = async () => {
+    if (items.length === 0) {
+      showToast('Vui lòng tải lên ít nhất 1 hình ảnh để xử lý!', 'warning');
+      return;
+    }
+
+    // Determine pending items to process
+    const pendingIndices: number[] = [];
+    items.forEach((it, idx) => {
+      if (it.status !== 'completed' || !it.resultImageUrl) {
+        pendingIndices.push(idx);
+      }
+    });
+
+    if (pendingIndices.length === 0) {
+      showToast('Tất cả hình ảnh đã được xử lý hoàn tất!', 'info');
+      return;
+    }
+
+    setIsProcessing(true);
+    isCancelledRef.current = false;
+
+    // Concurrency limit: 1 to 5 concurrent images at once (default 5)
+    const concurrencyLimit = Math.min(Math.max(settings.concurrency || 5, 1), 5);
+    const activeIds: string[] = [];
+    let nextQueueIdx = 0;
+
+    const runWorker = async (workerId: number) => {
+      while (nextQueueIdx < pendingIndices.length) {
+        if (isCancelledRef.current) break;
+
+        const targetItemIndex = pendingIndices[nextQueueIdx];
+        nextQueueIdx++;
+
+        const currentItem = items[targetItemIndex];
+        if (!currentItem) continue;
+
+        activeIds.push(currentItem.id);
+        setActiveProcessingIds([...activeIds]);
+        setCurrentProcessingIndex(targetItemIndex);
+        setSelectedItemId(currentItem.id);
+
+        // Update item to processing
+        setItems((prev) =>
+          prev.map((it) =>
+            it.id === currentItem.id
+              ? { ...it, status: 'processing', progress: 30, error: undefined }
+              : it
+          )
+        );
+
+        try {
+          const resultUrl = await processSingleImage(currentItem);
+
+          if (isCancelledRef.current) break;
+
+          setItems((prev) =>
+            prev.map((it) =>
+              it.id === currentItem.id
+                ? {
+                    ...it,
+                    status: 'completed',
+                    progress: 100,
+                    resultImageUrl: resultUrl,
+                    resultImageUrls: [resultUrl],
+                    activeResultIndex: 0,
+                  }
+                : it
+            )
+          );
+        } catch (err: any) {
+          if (!isCancelledRef.current) {
+            setItems((prev) =>
+              prev.map((it) =>
+                it.id === currentItem.id
+                  ? {
+                      ...it,
+                      status: 'error',
+                      progress: 0,
+                      error: err?.message || 'Lỗi khi xử lý hình ảnh',
+                    }
+                  : it
+              )
+            );
+          }
+        } finally {
+          const remIdx = activeIds.indexOf(currentItem.id);
+          if (remIdx !== -1) {
+            activeIds.splice(remIdx, 1);
+            setActiveProcessingIds([...activeIds]);
+          }
+        }
+      }
+    };
+
+    const actualWorkersCount = Math.min(concurrencyLimit, pendingIndices.length);
+    const workerPromises = Array.from({ length: actualWorkersCount }, (_, wId) => runWorker(wId));
+
+    await Promise.all(workerPromises);
+
+    setIsProcessing(false);
+    setActiveProcessingIds([]);
+
+    if (!isCancelledRef.current) {
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+      showToast(`Đã hoàn tất xử lý toàn bộ ảnh (tốc độ song song ${concurrencyLimit} ảnh cùng lúc)!`, 'success');
+    }
+  };
+
+  // Stop processing
+  const handleStopProcessing = () => {
+    isCancelledRef.current = true;
+    setIsProcessing(false);
+    setActiveProcessingIds([]);
+    showToast('Đã tạm dừng quá trình xử lý.', 'info');
+  };
+
+  // Update a single item by id
+  const handleUpdateItem = (id: string, updates: Partial<BatchImageItem>) => {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+    );
+  };
+
+  // Process a single item directly from its row (generates 1 image)
+  const handleProcessSingleItem = async (item: BatchImageItem) => {
+    handleUpdateItem(item.id, { status: 'processing', progress: 30, error: undefined });
+
+    try {
+      const resultUrl = await processSingleImage(item);
+      handleUpdateItem(item.id, {
+        status: 'completed',
+        progress: 100,
+        resultImageUrl: resultUrl,
+        resultImageUrls: [resultUrl],
+        activeResultIndex: 0,
+      });
+      showToast(`Đã tạo ảnh mới thành công cho: ${item.name}`, 'success');
+    } catch (err: any) {
+      handleUpdateItem(item.id, {
+        status: 'error',
+        progress: 0,
+        error: err.message || 'Lỗi khi tạo ảnh',
+      });
+      showToast(`Lỗi khi tạo ảnh cho: ${item.name}`, 'warning');
+    }
+  };
+
+  // Retry single item
+  const handleRetryItem = async (itemId: string) => {
+    const itemIndex = items.findIndex((it) => it.id === itemId);
+    if (itemIndex === -1) return;
+
+    const targetItem = items[itemIndex];
+    handleUpdateItem(itemId, { status: 'processing', progress: 50, error: undefined });
+
+    try {
+      const resultUrl = await processSingleImage(targetItem);
+      handleUpdateItem(itemId, {
+        status: 'completed',
+        progress: 100,
+        resultImageUrl: resultUrl,
+        resultImageUrls: [resultUrl],
+        activeResultIndex: 0,
+      });
+      showToast('Đã tạo lại ảnh thành công!', 'success');
+    } catch (err: any) {
+      handleUpdateItem(itemId, {
+        status: 'error',
+        error: err?.message || 'Lỗi tạo lại ảnh',
+      });
+      showToast('Lỗi khi tạo lại ảnh.', 'warning');
+    }
+  };
+
+  // Download all as ZIP
+  const handleDownloadAllZip = () => {
+    const completedItems: Array<{ name: string; resultImageUrl: string }> = [];
+
+    items.forEach((it) => {
+      if (it.status === 'completed') {
+        if (it.resultImageUrls && it.resultImageUrls.length > 1) {
+          it.resultImageUrls.forEach((url, idx) => {
+            const ext = it.name.includes('.') ? it.name.substring(it.name.lastIndexOf('.')) : '.png';
+            const baseName = it.name.replace(/\.[^/.]+$/, '');
+            completedItems.push({
+              name: `${baseName}_ban_${idx + 1}${ext}`,
+              resultImageUrl: url,
+            });
+          });
+        } else if (it.resultImageUrl) {
+          completedItems.push({
+            name: it.name,
+            resultImageUrl: it.resultImageUrl,
+          });
+        }
+      }
+    });
+
+    if (completedItems.length === 0) {
+      showToast('Chưa có ảnh nào hoàn thành để tải về dạng zip.', 'warning');
+      return;
+    }
+
+    downloadAllAsZip(completedItems, `bo-anh-da-thay-the-${Date.now()}.zip`);
+    showToast(`Đang tải về tệp ZIP chứa ${completedItems.length} ảnh đã tạo...`, 'success');
+  };
+
+  // Handle Save API configuration
+  const handleSaveApiConfig = (newConfig: ApiConfig) => {
+    setApiConfig(newConfig);
+    try {
+      localStorage.setItem(API_STORAGE_KEY, JSON.stringify(newConfig));
+    } catch (e) {
+      console.warn('Lỗi lưu cấu hình API vào bộ nhớ:', e);
+    }
+    if (newConfig.isCustomKeyActive && newConfig.apiKey) {
+      showToast(`Đã kích hoạt khóa API riêng với mô hình ${newConfig.model}!`, 'success');
+    } else {
+      showToast('Đã lưu cấu hình API.', 'info');
+    }
+  };
+
+  const completedCount = items.filter((it) => it.status === 'completed').length;
+  const errorCount = items.filter((it) => it.status === 'error').length;
+  const canStart = items.length > 0 && !isProcessing;
+
+  return (
+    <div className="min-h-screen bg-stone-100/70 text-stone-800 font-sans flex flex-col antialiased selection:bg-indigo-500 selection:text-white pb-16">
+      {/* Toast notification */}
+      {notification && (
+        <div
+          id="toast-notification"
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-xl flex items-center gap-2.5 text-xs font-semibold text-white transition-all transform animate-in fade-in slide-in-from-top-2 ${
+            notification.type === 'success'
+              ? 'bg-emerald-600'
+              : notification.type === 'warning'
+              ? 'bg-amber-600'
+              : 'bg-indigo-600'
+          }`}
+        >
+          {notification.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4" />
+          ) : (
+            <AlertCircle className="w-4 h-4" />
+          )}
+          <span>{notification.message}</span>
+        </div>
+      )}
+
+      {/* Header */}
+      <Header
+        hasApiKey={hasApiKey}
+        hasOpenAiKey={hasOpenAiKey}
+        apiConfig={apiConfig}
+        batchCount={items.length}
+        completedCount={completedCount}
+        onReset={handleReset}
+        onOpenGuide={() => setIsGuideOpen(true)}
+        onOpenApiSettings={() => setIsApiModalOpen(true)}
+        onOpenLogModal={() => setIsLogModalOpen(true)}
+        hasApiLog={Boolean(latestApiLog)}
+      />
+
+      {/* Main Container */}
+      <main className="max-w-7xl w-full mx-auto px-4 lg:px-8 pt-6 space-y-6 flex-1">
+        {/* API & Key Status Banner */}
+        <ApiStatusBanner
+          config={apiConfig}
+          systemHasKey={hasApiKey}
+          systemHasOpenAiKey={hasOpenAiKey}
+          onOpenSettings={() => setIsApiModalOpen(true)}
+        />
+
+        {/* Video Scene Extractor: Upload sample video, slice scenes by interval/cut, select frames and import */}
+        <VideoSceneExtractor
+          onImportToBatch={handleAddItems}
+          showToast={showToast}
+        />
+
+        {/* Configuration Layout: Character on Left, Outfit on Right */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Character Input */}
+          <CharacterSelector
+            enableCharacter={settings.enableCharacter}
+            onToggleEnableCharacter={(val) =>
+              setSettings((prev) => ({ ...prev, enableCharacter: val }))
+            }
+            characterPrompt={settings.characterPrompt}
+            onChangePrompt={(val) =>
+              setSettings((prev) => ({
+                ...prev,
+                characterPrompt: val,
+                enableCharacter: val.trim().length > 0 ? true : prev.enableCharacter,
+              }))
+            }
+            preservePose={settings.preservePose}
+            onTogglePreservePose={(val) =>
+              setSettings((prev) => ({ ...prev, preservePose: val }))
+            }
+            onApplyToAll={handleApplyToAll}
+          />
+
+          {/* Outfit Upload & Description */}
+          <OutfitSelector
+            productName={settings.productName || ''}
+            onChangeProductName={(val) =>
+              setSettings((prev) => ({
+                ...prev,
+                productName: val,
+              }))
+            }
+            outfitPrompt={settings.outfitPrompt}
+            onChangePrompt={(val) =>
+              setSettings((prev) => ({ ...prev, outfitPrompt: val }))
+            }
+            uploadedOutfits={uploadedOutfits}
+            onAddUploadedOutfits={handleAddUploadedOutfits}
+            onRemoveUploadedOutfit={handleRemoveUploadedOutfit}
+            onClearUploadedOutfits={handleClearUploadedOutfits}
+            uploadedOutfit={uploadedOutfit}
+            onApplyToAll={handleApplyToAll}
+          />
+        </div>
+
+        {/* Action Banner: Apply Character & Outfit/Product replacement to ALL images */}
+        <ApplyToAllBanner
+          enableCharacter={settings.enableCharacter}
+          characterPrompt={settings.characterPrompt}
+          outfitPrompt={settings.outfitPrompt}
+          uploadedOutfit={uploadedOutfit}
+          uploadedOutfits={uploadedOutfits}
+          preservePose={settings.preservePose}
+          totalImagesCount={items.length}
+          onApplyToAll={handleApplyToAll}
+          hasApplied={items.length > 0 && items.every((it) => Boolean(it.appliedConfig?.appliedAt))}
+        />
+
+        {/* Subtitle Removal & Quality Settings */}
+        <SubtitleSettings
+          settings={settings}
+          onChangeSettings={(newVal) => setSettings((prev) => ({ ...prev, ...newVal }))}
+        />
+
+        {/* Multi-Image Upload & Row-Based Pipeline: Each image is a Row with New AI Image and Video beside it */}
+        <BatchPipelineRows
+          items={items}
+          onAddItems={handleAddItems}
+          onRemoveItem={handleRemoveItem}
+          onClearAll={handleClearAll}
+          onProcessSingleItem={handleProcessSingleItem}
+          onUpdateItem={handleUpdateItem}
+          settings={settings}
+          isProcessingAll={isProcessing}
+          uploadedOutfit={uploadedOutfit}
+          uploadedOutfits={uploadedOutfits}
+          onApplyToAll={handleApplyToAll}
+          apiConfig={apiConfig}
+          systemHasKlingKey={hasKlingKey}
+          onOpenKlingSettings={() => {
+            setApiModalTab('kling');
+            setIsApiModalOpen(true);
+          }}
+        />
+      </main>
+
+      {/* Floating Bottom Action Bar */}
+      <div className="max-w-7xl w-full mx-auto px-4 lg:px-8 mt-6">
+        <BatchControls
+          totalCount={items.length}
+          completedCount={completedCount}
+          errorCount={errorCount}
+          isProcessing={isProcessing}
+          currentProcessingIndex={currentProcessingIndex}
+          activeProcessingCount={activeProcessingIds.length || 1}
+          concurrency={settings.concurrency || 5}
+          onChangeConcurrency={(val) => setSettings((prev) => ({ ...prev, concurrency: val }))}
+          onStartProcessing={handleStartProcessing}
+          onStopProcessing={handleStopProcessing}
+          onDownloadAllZip={handleDownloadAllZip}
+          canStart={canStart}
+        />
+      </div>
+
+      {/* Guide Modal */}
+      <GuideModal isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
+
+      {/* API & Key Settings Modal */}
+      <ApiSettingsModal
+        isOpen={isApiModalOpen}
+        onClose={() => setIsApiModalOpen(false)}
+        config={apiConfig}
+        onSaveConfig={handleSaveApiConfig}
+        systemHasKey={hasApiKey}
+        systemHasOpenAiKey={hasOpenAiKey}
+        systemHasKlingKey={hasKlingKey}
+        initialTab={apiModalTab}
+      />
+
+      {/* API Request Body Log Modal */}
+      <ApiLogModal
+        isOpen={isLogModalOpen}
+        onClose={() => setIsLogModalOpen(false)}
+        logData={latestApiLog}
+      />
+    </div>
+  );
+}
