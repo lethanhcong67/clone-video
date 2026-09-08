@@ -35,10 +35,13 @@ import {
   Settings,
   ChevronDown,
   ChevronUp,
+  Camera,
+  Clapperboard,
 } from 'lucide-react';
-import { AppliedReplacementConfig, BatchImageItem, BatchSettings, OutfitReference, ApiConfig } from '../types';
+import { AppliedReplacementConfig, BatchImageItem, BatchSettings, OutfitReference, ApiConfig, CameraMovementType } from '../types';
 import { fileToDataUrl, getImageDimensions } from '../utils/imageUtils';
 import { generateMotionVideoFromImage } from '../utils/videoGenerator';
+import { CAMERA_MOVEMENT_PRESETS } from '../data/presets';
 import { BatchPipelineRowItem } from './BatchPipelineRowItem';
 
 interface BatchPipelineRowsProps {
@@ -85,6 +88,37 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
   const [sliderPosition, setSliderPosition] = useState<number>(50);
   const [imageFitCover, setImageFitCover] = useState<boolean>(false);
   const [expandedPromptRowId, setExpandedPromptRowId] = useState<string | null>(null);
+  const [batchCameraMotion, setBatchCameraMotion] = useState<CameraMovementType>(
+    settings.defaultCameraMotion || 'static'
+  );
+
+  // Apply selected camera movement and its cinematic prompt to all rows
+  const handleApplyCameraMotionToAll = (motionId: CameraMovementType) => {
+    setBatchCameraMotion(motionId);
+    const preset = CAMERA_MOVEMENT_PRESETS.find((p) => p.id === motionId);
+    if (!preset) return;
+
+    items.forEach((it) => {
+      onUpdateItem(it.id, {
+        selectedCameraMotion: motionId,
+        videoPrompt: preset.prompt,
+      });
+    });
+  };
+
+  // Generate videos for all rows that have finished AI images and don't have video yet
+  const handleBatchGenerateAllVideos = async () => {
+    const readyItems = items.filter(
+      (it) => it.status === 'completed' && it.resultImageUrl && it.videoStatus !== 'generating' && !it.videoUrl
+    );
+    if (readyItems.length === 0) return;
+
+    for (const it of readyItems) {
+      handleGenerateKlingVideoForRow(it);
+      // Small stagger between API requests
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+  };
 
   // File Upload Processor: Handles multiple files asynchronously & safely
   const processFiles = async (fileList: FileList | File[]) => {
@@ -214,9 +248,12 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
     });
 
     try {
+      const activeCameraPreset = CAMERA_MOVEMENT_PRESETS.find(
+        (p) => p.id === (item.selectedCameraMotion || batchCameraMotion || settings.defaultCameraMotion || 'static')
+      );
       const defaultPromptText =
         'The model poses naturally with gentle body movement, natural breathing and posture adjustment, keeping the product design, logo, fabric print, patterns and apparel completely fixed, sharp and unchanged. Photorealistic 4k, cinematic soft lighting.';
-      const promptText = item.videoPrompt?.trim() || defaultPromptText;
+      const promptText = item.videoPrompt?.trim() || activeCameraPreset?.prompt || defaultPromptText;
 
       const res = await fetch('/api/kling/create-video', {
         method: 'POST',
@@ -477,37 +514,34 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
       {/* Main Row-Based Pipeline List */}
       {items.length > 0 && (
         <div className="space-y-4">
-          {/* Render each Image as an independent ROW */}
-          <div className="space-y-4">
-            {items.map((item, index) => (
-              <BatchPipelineRowItem
-                key={item.id}
-                item={item}
-                index={index}
-                settings={settings}
-                apiConfig={apiConfig}
-                uploadedOutfit={uploadedOutfit}
-                uploadedOutfits={uploadedOutfits}
-                isProcessingAll={isProcessingAll}
-                imageFitCover={imageFitCover}
-                setImageFitCover={setImageFitCover}
-                onUpdateItem={onUpdateItem}
-                onRemoveItem={onRemoveItem}
-                onProcessSingleItem={onProcessSingleItem}
-                onOpenKlingSettings={onOpenKlingSettings}
-                onOpenLightbox={(url, title) => {
-                  setLightboxImageUrl(url);
-                  setLightboxTitle(title);
-                }}
-                onOpenComparison={(compItem) => {
-                  setComparisonItem(compItem);
-                  setSliderPosition(50);
-                }}
-                onGenerateKlingVideo={handleGenerateKlingVideoForRow}
-                onGenerateInstantVideo={handleGenerateInstantVideoForRow}
-              />
-            ))}
-          </div>
+          {items.map((item, index) => (
+            <BatchPipelineRowItem
+              key={item.id}
+              item={item}
+              index={index}
+              settings={settings}
+              apiConfig={apiConfig}
+              uploadedOutfit={uploadedOutfit}
+              uploadedOutfits={uploadedOutfits}
+              isProcessingAll={isProcessingAll}
+              imageFitCover={imageFitCover}
+              setImageFitCover={setImageFitCover}
+              onUpdateItem={onUpdateItem}
+              onRemoveItem={onRemoveItem}
+              onProcessSingleItem={onProcessSingleItem}
+              onOpenKlingSettings={onOpenKlingSettings}
+              onOpenLightbox={(url, title) => {
+                setLightboxImageUrl(url);
+                setLightboxTitle(title);
+              }}
+              onOpenComparison={(compItem) => {
+                setComparisonItem(compItem);
+                setSliderPosition(50);
+              }}
+              onGenerateKlingVideo={handleGenerateKlingVideoForRow}
+              onGenerateInstantVideo={handleGenerateInstantVideoForRow}
+            />
+          ))}
         </div>
       )}
 

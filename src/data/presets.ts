@@ -1,4 +1,4 @@
-import { CharacterPreset, OutfitPreset, BatchImageItem } from '../types';
+import { CharacterPreset, OutfitPreset, BatchImageItem, CameraMovementPreset } from '../types';
 
 export const CHARACTER_PRESETS: CharacterPreset[] = [
   {
@@ -133,5 +133,98 @@ export const SAMPLE_BATCH_IMAGES = [
     name: 'Chan_Dung_Co_Text_Watermark_03.jpg',
     url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=800&auto=format&fit=crop&q=80',
     subtitleText: '[SUB: "Tập tiếp theo vào 20:00 thứ 6 hàng tuần @Netflix"]'
+  }
+];
+
+export const CAMERA_MOVEMENT_PRESETS: CameraMovementPreset[] = [
+  {
+    id: 'static',
+    title: 'Cố định (Static Shot)',
+    subtitle: 'Máy ảnh đứng yên, người mẫu cử động tự nhiên',
+    iconName: 'Lock',
+    badge: 'Khuyên dùng',
+    prompt: 'Static locked camera shot, no camera shake or movement, subtle natural breathing and gentle model posture adjustments, keeping the product design, logo, fabric print, patterns and apparel completely fixed, sharp and unchanged. Photorealistic 4k, cinematic soft lighting.',
+    description: 'Camera cố định 100%, giữ nguyên form dáng sản phẩm và độ sắc nét tối đa'
+  },
+  {
+    id: 'zoom_in',
+    title: 'Zoom In (Dolly In)',
+    subtitle: 'Phóng to từ từ vào cận cảnh khuôn mặt & chi tiết đồ',
+    iconName: 'ZoomIn',
+    badge: 'Cận cảnh',
+    prompt: 'Smooth slow cinematic zoom-in dolly camera moving towards the model, focusing on facial expressions and fine garment textures, flawless details, 4k resolution, studio lighting.',
+    description: 'Lướt camera tiến gần, nhấn mạnh biểu cảm và chất liệu vải'
+  },
+  {
+    id: 'zoom_out',
+    title: 'Zoom Out (Dolly Out)',
+    subtitle: 'Lùi dần từ cận cảnh ra toàn cảnh trang phục & bối cảnh',
+    iconName: 'ZoomOut',
+    badge: 'Toàn cảnh',
+    prompt: 'Smooth slow cinematic zoom-out dolly shot pulling back gracefully to reveal the full stylish outfit and scenic ambient environment, high fashion editorial aesthetic.',
+    description: 'Lùi camera từ từ để tôn vinh toàn bộ set đồ và bối cảnh'
+  },
+  {
+    id: 'tilt_up',
+    title: 'Tilt Up (Từ dưới lên)',
+    subtitle: 'Lia máy dọc từ gấu váy/giày lên khuôn mặt',
+    iconName: 'ArrowUp',
+    badge: 'Lookbook',
+    prompt: 'Cinematic vertical tilt-up camera movement starting from the footwear and lower outfit up to the model face, fashion runway lookbook style, ultra smooth motion.',
+    description: 'Góc máy thời trang kinh điển, quét dọc trọn bộ trang phục'
+  },
+  {
+    id: 'tilt_down',
+    title: 'Tilt Down (Từ trên xuống)',
+    subtitle: 'Lia máy dọc từ trên đỉnh đầu xuống dưới chân',
+    iconName: 'ArrowDown',
+    badge: 'Dáng đứng',
+    prompt: 'Cinematic vertical tilt-down camera movement starting from the head and upper apparel gracefully down to the lower hem, studio high fashion look.',
+    description: 'Quét từ gương mặt xuống các chi tiết quần/váy'
+  },
+  {
+    id: 'pan_right',
+    title: 'Pan Phải (Lướt sang phải)',
+    subtitle: 'Camera lướt ngang mượt mà sang phải',
+    iconName: 'ArrowRight',
+    badge: 'Lướt ngang',
+    prompt: 'Smooth horizontal camera pan moving slowly from left to right, capturing side profile of the model and subtle fabric dynamics, cinematic depth of field.',
+    description: 'Lia ngang sang phải tạo cảm giác không gian rộng mở'
+  },
+  {
+    id: 'pan_left',
+    title: 'Pan Trái (Lướt sang trái)',
+    subtitle: 'Camera lướt ngang mượt mà sang trái',
+    iconName: 'ArrowLeft',
+    badge: 'Lướt ngang',
+    prompt: 'Smooth horizontal camera pan moving slowly from right to left, revealing the model and ambient environment with cinematic elegance.',
+    description: 'Lia ngang sang trái mượt mà'
+  },
+  {
+    id: 'orbit',
+    title: 'Orbit (Xoay 360 vòng quanh)',
+    subtitle: 'Quay vòng cung quanh người mẫu',
+    iconName: 'RotateCw',
+    badge: '360 Độ',
+    prompt: 'Cinematic smooth orbiting arc camera shot rotating gracefully around the model, showcasing 3D depth, outfit structure and lighting from multiple angles.',
+    description: 'Góc máy điện ảnh xoay vòng cung tôn chiều sâu 3D'
+  },
+  {
+    id: 'runway',
+    title: 'Runway (Sàn diễn)',
+    subtitle: 'Chuyển động tracking bước đi thời trang',
+    iconName: 'Sparkles',
+    badge: 'Fashion',
+    prompt: 'Dynamic fashion runway tracking camera following the model with subtle confident strides, professional studio fashion show lighting, 4k ultra-crisp.',
+    description: 'Nhịp điệu tự tin, bắt mắt như sàn diễn thời trang quốc tế'
+  },
+  {
+    id: 'handheld',
+    title: 'Handheld (Vlog / Cầm tay)',
+    subtitle: 'Rung nhẹ tự nhiên kiểu quay điện thoại/vlog',
+    iconName: 'Video',
+    badge: 'Tự nhiên',
+    prompt: 'Natural subtle handheld camera motion with gentle organic breathing movement, authentic lifestyle vlog aesthetic, ultra-realistic textures.',
+    description: 'Hiệu ứng cầm tay chân thực, gần gũi cho video TikTok/Reels'
   }
 ];

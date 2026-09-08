@@ -29,8 +29,17 @@ import {
   Settings,
   ChevronDown,
   ChevronUp,
+  Camera,
+  ZoomIn,
+  ZoomOut,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  RotateCw,
 } from 'lucide-react';
-import { AppliedReplacementConfig, BatchImageItem, BatchSettings, OutfitReference, ApiConfig } from '../types';
+import { AppliedReplacementConfig, BatchImageItem, BatchSettings, OutfitReference, ApiConfig, CameraMovementType } from '../types';
+import { CAMERA_MOVEMENT_PRESETS } from '../data/presets';
 
 interface BatchPipelineRowItemProps {
   item: BatchImageItem;
@@ -1010,56 +1019,118 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                   </div>
                 </div>
               ) : isRowCompleted ? (
-                /* STATE 4: Ready for Video Creation (Studio Form inside Column 4) */
-                <div className="flex-1 flex flex-col justify-between p-3 bg-white rounded-lg border border-violet-200/80 shadow-2xs">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
+                /* STATE 4: Ready for Video Creation (Studio Form inside Column 4 - Compact & Space-Saving) */
+                <div className="flex-1 flex flex-col justify-between p-2.5 sm:p-3 bg-white rounded-lg border border-violet-200/80 shadow-2xs">
+                  <div className="space-y-2 flex-1 flex flex-col min-h-0">
+                    
+                    {/* Header: Label + Compact Camera Dropdown inline on the SAME line */}
+                    <div className="flex items-center justify-between gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 text-[11px] font-bold text-stone-800 shrink-0">
                         <Film className="w-3 h-3 text-violet-600" />
-                        <span>Prompt chuyển động video:</span>
-                      </label>
-                      <span className="text-[10px] text-stone-400">Tùy chọn</span>
+                        <span>Prompt video:</span>
+                      </div>
+
+                      {/* Compact Camera Selector directly beside the prompt label */}
+                      <div className="flex items-center gap-1 min-w-0">
+                        <Camera className="w-3 h-3 text-violet-500 shrink-0" />
+                        <select
+                          value={item.selectedCameraMotion || settings.defaultCameraMotion || 'static'}
+                          onChange={(e) => {
+                            const newMotionId = e.target.value as CameraMovementType;
+                            const selectedPreset = CAMERA_MOVEMENT_PRESETS.find((p) => p.id === newMotionId);
+                            if (selectedPreset) {
+                              onUpdateItem(item.id, {
+                                selectedCameraMotion: newMotionId,
+                                videoPrompt: selectedPreset.prompt,
+                              });
+                            }
+                          }}
+                          className="text-[10.5px] font-bold text-violet-900 bg-violet-50 hover:bg-violet-100 border border-violet-200 focus:border-violet-500 rounded px-1.5 py-0.5 outline-none cursor-pointer truncate max-w-[130px] sm:max-w-[155px]"
+                          title="Chọn góc máy & chuyển động camera"
+                        >
+                          {CAMERA_MOVEMENT_PRESETS.map((preset) => (
+                            <option key={preset.id} value={preset.id}>
+                              {preset.title.split(' ')[0]} ({preset.badge})
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Reset prompt button if modified */}
+                        {(() => {
+                          const currentMotionId = item.selectedCameraMotion || settings.defaultCameraMotion || 'static';
+                          const activePreset = CAMERA_MOVEMENT_PRESETS.find((p) => p.id === currentMotionId);
+                          const isCustom = item.videoPrompt && activePreset && item.videoPrompt !== activePreset.prompt;
+                          return isCustom ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (activePreset) {
+                                  onUpdateItem(item.id, { videoPrompt: activePreset.prompt });
+                                }
+                              }}
+                              className="text-[10px] text-violet-600 hover:text-violet-800 p-0.5 rounded hover:bg-violet-50 shrink-0 cursor-pointer"
+                              title="Khôi phục lại prompt chuẩn của góc máy này"
+                            >
+                              <RotateCcw className="w-2.5 h-2.5" />
+                            </button>
+                          ) : null;
+                        })()}
+                      </div>
                     </div>
 
-                    <textarea
-                      rows={3}
-                      value={item.videoPrompt || ''}
-                      onChange={(e) => onUpdateItem(item.id, { videoPrompt: e.target.value })}
-                      placeholder="Nhập prompt video (vd: Giữ cố định thiết kế sản phẩm, người mẫu cử động tự nhiên...)"
-                      className="w-full text-xs rounded-md border border-stone-300 p-2 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1.5 focus:ring-violet-500 bg-stone-50/50 resize-none"
-                    />
+                    {/* Quick Camera Motion Badges (Space-saving pills) */}
+                    <div className="flex items-center gap-1 overflow-x-auto py-0.5 text-[9.5px] shrink-0">
+                      {CAMERA_MOVEMENT_PRESETS.map((preset) => {
+                        const isSelected = (item.selectedCameraMotion || settings.defaultCameraMotion || 'static') === preset.id;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => {
+                              onUpdateItem(item.id, {
+                                selectedCameraMotion: preset.id,
+                                videoPrompt: preset.prompt,
+                              });
+                            }}
+                            className={`shrink-0 px-1.5 py-0.5 rounded font-medium transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-violet-600 text-white font-bold shadow-2xs'
+                                : 'bg-stone-100 hover:bg-violet-50 hover:text-violet-700 text-stone-600 border border-stone-200/60'
+                            }`}
+                            title={preset.description}
+                          >
+                            {preset.title.split(' ')[0]}
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                    {/* Quick suggestion pills */}
-                    <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-[10px]">
-                      {videoPromptSuggestions.map((sug, sIdx) => (
-                        <button
-                          key={sIdx}
-                          type="button"
-                          onClick={() => onUpdateItem(item.id, { videoPrompt: sug })}
-                          className="shrink-0 px-2 py-0.5 rounded bg-stone-100 hover:bg-violet-50 hover:text-violet-700 text-stone-600 border border-stone-200/70 transition-colors cursor-pointer"
-                        >
-                          {sug}
-                        </button>
-                      ))}
+                    {/* Video Prompt Textarea */}
+                    <div className="flex-1 min-h-0 flex flex-col">
+                      <textarea
+                        rows={3}
+                        value={
+                          item.videoPrompt !== undefined
+                            ? item.videoPrompt
+                            : (CAMERA_MOVEMENT_PRESETS.find((p) => p.id === (item.selectedCameraMotion || settings.defaultCameraMotion || 'static'))?.prompt || '')
+                        }
+                        onChange={(e) => onUpdateItem(item.id, { videoPrompt: e.target.value })}
+                        placeholder="Nhập prompt video Kling AI..."
+                        className="w-full flex-1 min-h-[75px] text-xs rounded-md border border-stone-300 p-2 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1.5 focus:ring-violet-500 bg-stone-50/50 resize-none leading-relaxed"
+                      />
                     </div>
                   </div>
 
-                  <div className="mt-3 space-y-1.5 pt-2 border-t border-stone-100">
+                  {/* Submit Kling AI Video Button */}
+                  <div className="mt-2 pt-2 border-t border-stone-100 shrink-0">
                     <button
                       type="button"
                       onClick={() => onGenerateKlingVideo(item)}
                       disabled={isVideoGenerating}
-                      className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold px-3.5 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-700 active:scale-95 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                      className="w-full inline-flex items-center justify-center gap-2 text-xs font-bold px-3.5 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 active:scale-95 text-white shadow-sm transition-all cursor-pointer disabled:opacity-50"
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
                       <span>Tạo video Kling AI</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onGenerateInstantVideo(item)}
-                      className="w-full text-center text-[10.5px] text-stone-400 hover:text-stone-700 underline cursor-pointer"
-                    >
-                      Hoặc tạo video chuyển động tức thì
                     </button>
                   </div>
                 </div>

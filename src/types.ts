@@ -1,3 +1,25 @@
+export type CameraMovementType =
+  | 'static'
+  | 'zoom_in'
+  | 'zoom_out'
+  | 'tilt_up'
+  | 'tilt_down'
+  | 'pan_left'
+  | 'pan_right'
+  | 'orbit'
+  | 'runway'
+  | 'handheld';
+
+export interface CameraMovementPreset {
+  id: CameraMovementType;
+  title: string;
+  subtitle: string;
+  iconName: string;
+  badge: string;
+  prompt: string;
+  description: string;
+}
+
 export interface AppliedReplacementConfig {
   enableCharacter: boolean; // Whether to replace character for this image
   enableOutfit: boolean; // Whether to replace outfit/product for this image
@@ -29,6 +51,7 @@ export interface BatchImageItem {
   error?: string;
   originalDimensions?: { width: number; height: number };
   // Video fields for same-row pipeline
+  selectedCameraMotion?: CameraMovementType;
   videoPrompt?: string;
   videoUrl?: string;
   videoStatus?: 'idle' | 'generating' | 'completed' | 'error';
@@ -85,6 +108,7 @@ export interface BatchSettings {
   selectedOutfitPresetId?: string;
   selectedOutfitRefId?: string;
   productReferences?: OutfitReference[]; // Multiple reference products: ref2, ref3, ...
+  defaultCameraMotion?: CameraMovementType;
   removeSubtitles: boolean;
   preservePose: boolean;
   preserveBackground: boolean;
