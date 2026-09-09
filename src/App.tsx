@@ -8,7 +8,6 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { Header } from './components/Header';
-import { CharacterSelector } from './components/CharacterSelector';
 import { OutfitSelector } from './components/OutfitSelector';
 import { SubtitleSettings } from './components/SubtitleSettings';
 import { BatchControls } from './components/BatchControls';
@@ -27,7 +26,7 @@ const API_STORAGE_KEY = 'ai_image_api_config_v2';
 
 const DEFAULT_GPT_CONFIG: GptImageConfig = {
   apiKey: '',
-  baseUrl: 'https://www.mnapi.com/v1/images/edits',
+  baseUrl: 'https://api.openlux.ai/v1/images/edits',
   model: 'gpt-image-2',
   size: '1152x2048',
   quality: 'medium',
@@ -42,7 +41,7 @@ export const DEFAULT_KLING_PROMPT =
 
 const DEFAULT_KLING_CONFIG: KlingVideoConfig = {
   apiKey: '',
-  baseUrl: 'https://api.klingai.com',
+  baseUrl: 'https://api.openlux.ai/kling/v1/videos/image2video',
   model: 'kling-v2-6',
   mode: 'pro',
   duration: '5',
@@ -62,9 +61,15 @@ function loadSavedApiConfig(): ApiConfig {
       const parsed = JSON.parse(saved);
       const savedBaseUrl = parsed.gptImage?.baseUrl;
       const effectiveBaseUrl =
-        !savedBaseUrl || savedBaseUrl === 'https://api.openai.com/v1'
-          ? 'https://www.mnapi.com/v1/images/edits'
+        !savedBaseUrl || savedBaseUrl === 'https://api.openai.com/v1' || savedBaseUrl === 'https://www.mnapi.com/v1/images/edits'
+          ? 'https://api.openlux.ai/v1/images/edits'
           : savedBaseUrl;
+
+      const savedKlingBaseUrl = parsed.kling?.baseUrl;
+      const effectiveKlingBaseUrl =
+        !savedKlingBaseUrl || savedKlingBaseUrl === 'https://api.klingai.com'
+          ? 'https://api.openlux.ai/kling/v1/videos/image2video'
+          : savedKlingBaseUrl;
 
       return {
         activeProvider: parsed.activeProvider || 'gpt-image-2',
@@ -87,7 +92,7 @@ function loadSavedApiConfig(): ApiConfig {
           apiKey: parsed.kling?.apiKey || '',
           accessKey: parsed.kling?.accessKey,
           secretKey: parsed.kling?.secretKey,
-          baseUrl: parsed.kling?.baseUrl || 'https://api.klingai.com',
+          baseUrl: effectiveKlingBaseUrl,
           model: parsed.kling?.model || 'kling-v2-6',
           mode: parsed.kling?.mode || 'pro',
           duration: parsed.kling?.duration || '5',
@@ -412,7 +417,7 @@ export default function App() {
       variationIndex,
       gptImageConfig: {
         apiKey: effectiveApiKey ? 'sk-***' : undefined,
-        baseUrl: apiConfig.gptImage?.baseUrl || 'https://www.mnapi.com/v1/images/edits',
+        baseUrl: apiConfig.gptImage?.baseUrl || 'https://api.openlux.ai/v1/images/edits',
         model: apiConfig.gptImage?.model || 'gpt-image-2',
         quality: apiConfig.gptImage?.quality || 'standard',
       },
@@ -448,7 +453,7 @@ export default function App() {
           variationIndex,
           gptImageConfig: {
             apiKey: effectiveApiKey,
-            baseUrl: apiConfig.gptImage?.baseUrl || 'https://www.mnapi.com/v1/images/edits',
+            baseUrl: apiConfig.gptImage?.baseUrl || 'https://api.openlux.ai/v1/images/edits',
             model: apiConfig.gptImage?.model || 'gpt-image-2',
             size: apiConfig.gptImage?.size || '1152x2048',
             quality: apiConfig.gptImage?.quality || 'medium',
@@ -793,50 +798,26 @@ export default function App() {
           showToast={showToast}
         />
 
-        {/* Configuration Layout: Character on Left, Outfit on Right */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Character Input */}
-          <CharacterSelector
-            enableCharacter={settings.enableCharacter}
-            onToggleEnableCharacter={(val) =>
-              setSettings((prev) => ({ ...prev, enableCharacter: val }))
-            }
-            characterPrompt={settings.characterPrompt}
-            onChangePrompt={(val) =>
-              setSettings((prev) => ({
-                ...prev,
-                characterPrompt: val,
-                enableCharacter: val.trim().length > 0 ? true : prev.enableCharacter,
-              }))
-            }
-            preservePose={settings.preservePose}
-            onTogglePreservePose={(val) =>
-              setSettings((prev) => ({ ...prev, preservePose: val }))
-            }
-            onApplyToAll={handleApplyToAll}
-          />
-
-          {/* Outfit Upload & Description */}
-          <OutfitSelector
-            productName={settings.productName || ''}
-            onChangeProductName={(val) =>
-              setSettings((prev) => ({
-                ...prev,
-                productName: val,
-              }))
-            }
-            outfitPrompt={settings.outfitPrompt}
-            onChangePrompt={(val) =>
-              setSettings((prev) => ({ ...prev, outfitPrompt: val }))
-            }
-            uploadedOutfits={uploadedOutfits}
-            onAddUploadedOutfits={handleAddUploadedOutfits}
-            onRemoveUploadedOutfit={handleRemoveUploadedOutfit}
-            onClearUploadedOutfits={handleClearUploadedOutfits}
-            uploadedOutfit={uploadedOutfit}
-            onApplyToAll={handleApplyToAll}
-          />
-        </div>
+        {/* Product / Outfit Reference Image Upload */}
+        <OutfitSelector
+          productName={settings.productName || ''}
+          onChangeProductName={(val) =>
+            setSettings((prev) => ({
+              ...prev,
+              productName: val,
+            }))
+          }
+          outfitPrompt={settings.outfitPrompt}
+          onChangePrompt={(val) =>
+            setSettings((prev) => ({ ...prev, outfitPrompt: val }))
+          }
+          uploadedOutfits={uploadedOutfits}
+          onAddUploadedOutfits={handleAddUploadedOutfits}
+          onRemoveUploadedOutfit={handleRemoveUploadedOutfit}
+          onClearUploadedOutfits={handleClearUploadedOutfits}
+          uploadedOutfit={uploadedOutfit}
+          onApplyToAll={handleApplyToAll}
+        />
 
         {/* Action Banner: Apply Character & Outfit/Product replacement to ALL images */}
         <ApplyToAllBanner

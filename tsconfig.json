@@ -20,6 +20,8 @@
         "./*"
       ]
     },
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "allowImportingTsExtensions": true,
     "noEmit": true
   }

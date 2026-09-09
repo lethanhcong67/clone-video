@@ -156,11 +156,11 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xs shrink-0">
-              3
+              2
             </div>
             <div className="flex items-center gap-2">
               <h2 className="text-xs sm:text-sm font-bold text-stone-900">
-                Sản phẩm / trang phục thay thế
+                Sản phẩm / trang phục thay thế (Tải lên ảnh tham chiếu)
               </h2>
               {uploadedOutfits.length > 0 && (
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">

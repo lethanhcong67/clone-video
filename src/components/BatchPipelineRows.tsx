@@ -84,9 +84,6 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
   // Modals
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const [lightboxTitle, setLightboxTitle] = useState<string>('');
-  const [comparisonItem, setComparisonItem] = useState<BatchImageItem | null>(null);
-  const [sliderPosition, setSliderPosition] = useState<number>(50);
-  const [imageFitCover, setImageFitCover] = useState<boolean>(false);
   const [expandedPromptRowId, setExpandedPromptRowId] = useState<string | null>(null);
   const [batchCameraMotion, setBatchCameraMotion] = useState<CameraMovementType>(
     settings.defaultCameraMotion || 'static'
@@ -216,7 +213,7 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
     const apiKey = klingConfig?.apiKey?.trim() || undefined;
     const accessKey = klingConfig?.accessKey?.trim() || undefined;
     const secretKey = klingConfig?.secretKey?.trim() || undefined;
-    const baseUrl = klingConfig?.baseUrl?.trim() || 'https://api.klingai.com';
+    const baseUrl = klingConfig?.baseUrl?.trim() || 'https://api.openlux.ai/kling/v1/videos/image2video';
     const model = klingConfig?.model || 'kling-v2-6';
     const mode = klingConfig?.mode || 'pro';
     const duration = klingConfig?.duration || '5';
@@ -248,12 +245,7 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
     });
 
     try {
-      const activeCameraPreset = CAMERA_MOVEMENT_PRESETS.find(
-        (p) => p.id === (item.selectedCameraMotion || batchCameraMotion || settings.defaultCameraMotion || 'static')
-      );
-      const defaultPromptText =
-        'The model poses naturally with gentle body movement, natural breathing and posture adjustment, keeping the product design, logo, fabric print, patterns and apparel completely fixed, sharp and unchanged. Photorealistic 4k, cinematic soft lighting.';
-      const promptText = item.videoPrompt?.trim() || activeCameraPreset?.prompt || defaultPromptText;
+      const promptText = item.videoPrompt?.trim() || '';
 
       const res = await fetch('/api/kling/create-video', {
         method: 'POST',
@@ -524,8 +516,6 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
               uploadedOutfit={uploadedOutfit}
               uploadedOutfits={uploadedOutfits}
               isProcessingAll={isProcessingAll}
-              imageFitCover={imageFitCover}
-              setImageFitCover={setImageFitCover}
               onUpdateItem={onUpdateItem}
               onRemoveItem={onRemoveItem}
               onProcessSingleItem={onProcessSingleItem}
@@ -533,10 +523,6 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
               onOpenLightbox={(url, title) => {
                 setLightboxImageUrl(url);
                 setLightboxTitle(title);
-              }}
-              onOpenComparison={(compItem) => {
-                setComparisonItem(compItem);
-                setSliderPosition(50);
               }}
               onGenerateKlingVideo={handleGenerateKlingVideoForRow}
               onGenerateInstantVideo={handleGenerateInstantVideoForRow}
@@ -573,104 +559,6 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
                 referrerPolicy="no-referrer"
                 className="max-h-[80vh] w-auto max-w-full object-contain rounded-lg"
               />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Comparison Modal (Before / After Split Slider) */}
-      {comparisonItem && comparisonItem.resultImageUrl && (
-        <div
-          id="row-comparison-modal"
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setComparisonItem(null)}
-        >
-          <div
-            className="relative max-w-4xl w-full bg-white rounded-2xl overflow-hidden shadow-2xl p-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h4 className="text-base font-bold text-stone-900">
-                  So sánh Trước & Sau: {comparisonItem.name}
-                </h4>
-                <p className="text-xs text-stone-500">
-                  Kéo thanh trượt ngang để kiểm tra chi tiết nhân vật, trang phục và phụ đề đã xóa
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setComparisonItem(null)}
-                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Before-After Interactive Canvas Container */}
-            <div className="relative w-full h-[65vh] max-h-[640px] min-h-[420px] rounded-xl overflow-hidden select-none bg-stone-900 shadow-inner">
-              {/* After image (Result) */}
-              <img
-                src={comparisonItem.resultImageUrl}
-                alt="Sau khi đổi"
-                referrerPolicy="no-referrer"
-                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-              />
-
-              {/* Before image (Original) clipped by slider */}
-              <div
-                className="absolute inset-0 overflow-hidden pointer-events-none"
-                style={{ width: `${sliderPosition}%` }}
-              >
-                <img
-                  src={comparisonItem.dataUrl}
-                  alt="Trước khi đổi"
-                  referrerPolicy="no-referrer"
-                  className="absolute inset-0 w-full h-full object-contain"
-                  style={{ width: '100%', maxWidth: 'none' }}
-                />
-              </div>
-
-              {/* Slider Divider Line */}
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-white shadow-md pointer-events-none"
-                style={{ left: `${sliderPosition}%` }}
-              >
-                <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-white shadow-lg border border-stone-300 flex items-center justify-center text-stone-700 font-bold text-xs">
-                  ⇔
-                </div>
-              </div>
-
-              {/* Labels */}
-              <span className="absolute top-3 left-3 px-2 py-1 rounded bg-black/60 backdrop-blur-xs text-[11px] font-bold text-white pointer-events-none">
-                Ảnh gốc
-              </span>
-              <span className="absolute top-3 right-3 px-2 py-1 rounded bg-indigo-600/80 backdrop-blur-xs text-[11px] font-bold text-white pointer-events-none">
-                Ảnh mới AI
-              </span>
-
-              {/* Interactive Range Input */}
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={sliderPosition}
-                onChange={(e) => setSliderPosition(Number(e.target.value))}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize"
-              />
-            </div>
-
-            <div className="mt-4 flex items-center justify-between">
-              <span className="text-xs text-stone-500">
-                Kéo chuột hoặc vuốt cảm ứng sang trái/phải để so sánh
-              </span>
-              <button
-                type="button"
-                onClick={() => setComparisonItem(null)}
-                className="px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-800 transition-colors"
-              >
-                Đóng
-              </button>
             </div>
           </div>
         </div>

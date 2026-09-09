@@ -139,9 +139,9 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
   const [showGeminiKey, setShowGeminiKey] = useState(false);
 
   // GPT-Image-2 state
-  const [gptKey, setGptKey] = useState(config.gptImage?.apiKey || '');
+  const [gptKey, setGptKey] = useState(config.gptImage?.apiKey || 'sk-2YrQt4dMCkJQCBR439Hq1rlvCtONjFfEvFu7MGrW4rledtzM');
   const [gptBaseUrl, setGptBaseUrl] = useState(
-    config.gptImage?.baseUrl || 'https://www.mnapi.com/v1/images/edits'
+    config.gptImage?.baseUrl || 'https://api.openlux.ai/v1/images/edits'
   );
   const [selectedGptModel, setSelectedGptModel] = useState(config.gptImage?.model || 'gpt-image-2');
   const [gptSize, setGptSize] = useState<string>(config.gptImage?.size || '1152x2048');
@@ -151,11 +151,11 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
   const [showGptKey, setShowGptKey] = useState(false);
 
   // Kling Video state
-  const [klingKey, setKlingKey] = useState(config.kling?.apiKey || '');
+  const [klingKey, setKlingKey] = useState(config.kling?.apiKey || 'sk-FKuIim2pal8dLHVXBJqig9AmgFbX8m0VM09XtUbfBdqAyI95');
   const [klingAccessKey, setKlingAccessKey] = useState(config.kling?.accessKey || '');
   const [klingSecretKey, setKlingSecretKey] = useState(config.kling?.secretKey || '');
   const [klingBaseUrl, setKlingBaseUrl] = useState(
-    config.kling?.baseUrl || 'https://api.klingai.com'
+    config.kling?.baseUrl || 'https://api.openlux.ai/kling/v1/videos/image2video'
   );
   const [selectedKlingModel, setSelectedKlingModel] = useState(config.kling?.model || 'kling-v2-6');
   const [klingMode, setKlingMode] = useState<'std' | 'pro'>(config.kling?.mode || 'pro');
@@ -211,14 +211,14 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
       setSelectedGeminiModel(config.model || 'gemini-3.1-flash-image');
       setUseCustomGeminiKey(config.isCustomKeyActive);
       setGptKey(config.gptImage?.apiKey || '');
-      setGptBaseUrl(config.gptImage?.baseUrl || 'https://www.mnapi.com/v1/images/edits');
+      setGptBaseUrl(config.gptImage?.baseUrl || 'https://api.openlux.ai/v1/images/edits');
       setSelectedGptModel(config.gptImage?.model || 'gpt-image-2');
       setGptSize(config.gptImage?.size || '1152x2048');
       setGptQuality(config.gptImage?.quality === 'standard' ? 'medium' : (config.gptImage?.quality || 'medium'));
       setKlingKey(config.kling?.apiKey || '');
       setKlingAccessKey(config.kling?.accessKey || '');
       setKlingSecretKey(config.kling?.secretKey || '');
-      setKlingBaseUrl(config.kling?.baseUrl || 'https://api.klingai.com');
+      setKlingBaseUrl(config.kling?.baseUrl || 'https://api.openlux.ai/kling/v1/videos/image2video');
       setSelectedKlingModel(config.kling?.model || 'kling-v2-6');
       setKlingMode(config.kling?.mode || 'pro');
       setKlingDuration(config.kling?.duration || '5');
@@ -344,7 +344,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           apiKey: keyToTest || undefined,
-          baseUrl: gptBaseUrl.trim() || 'https://www.mnapi.com/v1/images/edits',
+          baseUrl: gptBaseUrl.trim() || 'https://api.openlux.ai/v1/images/edits',
           model: selectedGptModel,
         }),
       });
@@ -393,7 +393,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
         body: JSON.stringify({
           apiKey: rawInputKey || undefined,
           secretKey: klingSecretKey.trim() || undefined,
-          baseUrl: klingBaseUrl.trim() || 'https://api.klingai.com',
+          baseUrl: klingBaseUrl.trim() || 'https://api.openlux.ai/kling/v1/videos/image2video',
         }),
       });
 
@@ -423,7 +423,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
     const isCustomGeminiActive = Boolean(geminiKey.trim() && useCustomGeminiKey);
     const updatedGptConfig: GptImageConfig = {
       apiKey: gptKey.trim(),
-      baseUrl: gptBaseUrl.trim() || 'https://www.mnapi.com/v1/images/edits',
+      baseUrl: gptBaseUrl.trim() || 'https://api.openlux.ai/v1/images/edits',
       model: selectedGptModel,
       size: gptSize.trim() || '1152x2048',
       quality: gptQuality,
@@ -439,7 +439,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
       apiKey: effectiveKey,
       accessKey: effectiveAk || undefined,
       secretKey: klingSecretKey.trim() || undefined,
-      baseUrl: klingBaseUrl.trim() || 'https://api.klingai.com',
+      baseUrl: klingBaseUrl.trim() || 'https://api.openlux.ai/kling/v1/videos/image2video',
       model: selectedKlingModel || 'kling-v2-6',
       mode: klingMode || 'pro',
       duration: klingDuration || '5',
@@ -508,11 +508,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               setActiveTab('gemini');
               setActiveProvider('gemini');
             }}
-            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'gemini'
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'gemini'
                 ? 'bg-white text-indigo-700 shadow-xs border border-stone-200'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
-            }`}
+              }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
             <span className="truncate">Google Gemini</span>
@@ -528,11 +527,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               setActiveTab('gpt-image-2');
               setActiveProvider('gpt-image-2');
             }}
-            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'gpt-image-2'
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'gpt-image-2'
                 ? 'bg-white text-emerald-700 shadow-xs border border-stone-200'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
-            }`}
+              }`}
           >
             <Wand2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             <span className="truncate">GPT-Image-2</span>
@@ -545,11 +543,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
             type="button"
             id="tab-kling-video-provider"
             onClick={() => setActiveTab('kling')}
-            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'kling'
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'kling'
                 ? 'bg-white text-violet-700 shadow-xs border border-stone-200'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
-            }`}
+              }`}
           >
             <Video className="w-3.5 h-3.5 text-violet-600 shrink-0" />
             <span className="truncate">Kling Video</span>
@@ -692,11 +689,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               {geminiTestResult && (
                 <div
                   id="test-gemini-feedback"
-                  className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${
-                    geminiTestResult.success
+                  className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${geminiTestResult.success
                       ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
                       : 'bg-rose-50 border border-rose-200 text-rose-800'
-                  }`}
+                    }`}
                 >
                   {geminiTestResult.success ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -782,23 +778,21 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setGptBaseUrl('https://www.mnapi.com/v1/images/edits')}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${
-                        gptBaseUrl.includes('mnapi')
+                      onClick={() => setGptBaseUrl('https://api.openlux.ai/v1/images/edits')}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${gptBaseUrl.includes('openlux.ai')
                           ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                           : 'text-stone-500 hover:text-emerald-700 underline'
-                      }`}
+                        }`}
                     >
-                      MN API
+                      OpenLux AI
                     </button>
                     <button
                       type="button"
                       onClick={() => setGptBaseUrl('https://api.openai.com/v1')}
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${
-                        gptBaseUrl.includes('openai.com')
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${gptBaseUrl.includes('openai.com')
                           ? 'bg-stone-200 text-stone-800'
                           : 'text-stone-500 hover:text-stone-800 underline'
-                      }`}
+                        }`}
                     >
                       OpenAI Gốc
                     </button>
@@ -809,7 +803,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                   type="text"
                   value={gptBaseUrl}
                   onChange={(e) => setGptBaseUrl(e.target.value)}
-                  placeholder="https://www.mnapi.com/v1/images/edits"
+                  placeholder="https://api.openlux.ai/v1/images/edits"
                   className="w-full px-3 py-1.5 rounded-lg border border-stone-300 text-xs font-mono text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
                 />
               </div>
@@ -857,11 +851,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                         key={preset.value}
                         type="button"
                         onClick={() => setGptSize(preset.value)}
-                        className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer ${
-                          gptSize === preset.value
+                        className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer ${gptSize === preset.value
                             ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                             : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
-                        }`}
+                          }`}
                       >
                         {preset.label}
                       </button>
@@ -887,33 +880,30 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setGptQuality('medium')}
-                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                        gptQuality === 'medium'
+                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${gptQuality === 'medium'
                           ? 'bg-emerald-600 text-white shadow-2xs'
                           : 'text-stone-600 hover:text-stone-900'
-                      }`}
+                        }`}
                     >
                       Medium (Mặc định)
                     </button>
                     <button
                       type="button"
                       onClick={() => setGptQuality('standard')}
-                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                        gptQuality === 'standard'
+                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${gptQuality === 'standard'
                           ? 'bg-emerald-600 text-white shadow-2xs'
                           : 'text-stone-600 hover:text-stone-900'
-                      }`}
+                        }`}
                     >
                       Standard
                     </button>
                     <button
                       type="button"
                       onClick={() => setGptQuality('hd')}
-                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                        gptQuality === 'hd'
+                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${gptQuality === 'hd'
                           ? 'bg-emerald-600 text-white shadow-2xs'
                           : 'text-stone-600 hover:text-stone-900'
-                      }`}
+                        }`}
                     >
                       HD
                     </button>
@@ -953,11 +943,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               {gptTestResult && (
                 <div
                   id="test-gpt-feedback"
-                  className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${
-                    gptTestResult.success
+                  className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${gptTestResult.success
                       ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
                       : 'bg-rose-50 border border-rose-200 text-rose-800'
-                  }`}
+                    }`}
                 >
                   {gptTestResult.success ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -1100,34 +1089,31 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setKlingBaseUrl('https://api.klingai.com')}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${
-                        klingBaseUrl === 'https://api.klingai.com'
+                      onClick={() => setKlingBaseUrl('https://api.openlux.ai/kling/v1/videos/image2video')}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${klingBaseUrl.includes('openlux.ai')
                           ? 'bg-violet-100 text-violet-800 border border-violet-300'
                           : 'text-stone-500 hover:text-violet-700 underline'
-                      }`}
-                    >
-                      api.klingai.com
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setKlingBaseUrl('https://api.openlux.ai/kling/v1/videos/image2video')}
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${
-                        klingBaseUrl.includes('openlux.ai')
-                          ? 'bg-violet-100 text-violet-800 border border-violet-300'
-                          : 'text-stone-500 hover:text-stone-800 underline'
-                      }`}
+                        }`}
                     >
                       OpenLux AI
                     </button>
                     <button
                       type="button"
-                      onClick={() => setKlingBaseUrl('https://api-singapore.klingai.com')}
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${
-                        klingBaseUrl.includes('singapore')
+                      onClick={() => setKlingBaseUrl('https://api.klingai.com')}
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${klingBaseUrl === 'https://api.klingai.com'
                           ? 'bg-stone-200 text-stone-800'
                           : 'text-stone-500 hover:text-stone-800 underline'
-                      }`}
+                        }`}
+                    >
+                      api.klingai.com
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setKlingBaseUrl('https://api-singapore.klingai.com')}
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${klingBaseUrl.includes('singapore')
+                          ? 'bg-stone-200 text-stone-800'
+                          : 'text-stone-500 hover:text-stone-800 underline'
+                        }`}
                     >
                       Singapore
                     </button>
@@ -1138,7 +1124,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                   type="text"
                   value={klingBaseUrl}
                   onChange={(e) => setKlingBaseUrl(e.target.value)}
-                  placeholder="https://api.klingai.com"
+                  placeholder="https://api.openlux.ai/kling/v1/videos/image2video"
                   className="w-full px-3 py-1.5 rounded-lg border border-stone-300 text-xs font-mono text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all"
                 />
               </div>
@@ -1173,22 +1159,20 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setKlingMode('std')}
-                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
-                          klingMode === 'std'
+                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${klingMode === 'std'
                             ? 'bg-violet-600 text-white shadow-2xs'
                             : 'text-stone-600 hover:text-stone-900'
-                        }`}
+                          }`}
                       >
                         Standard
                       </button>
                       <button
                         type="button"
                         onClick={() => setKlingMode('pro')}
-                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
-                          klingMode === 'pro'
+                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${klingMode === 'pro'
                             ? 'bg-violet-600 text-white shadow-2xs'
                             : 'text-stone-600 hover:text-stone-900'
-                        }`}
+                          }`}
                       >
                         Pro
                       </button>
@@ -1201,22 +1185,20 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setKlingDuration('5')}
-                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
-                          klingDuration === '5'
+                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${klingDuration === '5'
                             ? 'bg-violet-600 text-white shadow-2xs'
                             : 'text-stone-600 hover:text-stone-900'
-                        }`}
+                          }`}
                       >
                         5 giây
                       </button>
                       <button
                         type="button"
                         onClick={() => setKlingDuration('10')}
-                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
-                          klingDuration === '10'
+                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${klingDuration === '10'
                             ? 'bg-violet-600 text-white shadow-2xs'
                             : 'text-stone-600 hover:text-stone-900'
-                        }`}
+                          }`}
                       >
                         10 giây
                       </button>
@@ -1236,11 +1218,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                           key={ratio}
                           type="button"
                           onClick={() => setKlingAspectRatio(ratio)}
-                          className={`px-2 py-1 rounded-md text-xs font-bold transition-all ${
-                            klingAspectRatio === ratio
+                          className={`px-2 py-1 rounded-md text-xs font-bold transition-all ${klingAspectRatio === ratio
                               ? 'bg-violet-600 text-white shadow-2xs'
                               : 'text-stone-600 hover:text-stone-900'
-                          }`}
+                            }`}
                         >
                           {ratio}
                         </button>
@@ -1276,11 +1257,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setKlingMultiShot(!klingMultiShot)}
-                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
-                        klingMultiShot
+                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${klingMultiShot
                           ? 'bg-violet-600 text-white shadow-2xs'
                           : 'bg-stone-200 text-stone-700 hover:bg-stone-300'
-                      }`}
+                        }`}
                     >
                       {klingMultiShot ? 'BẬT' : 'TẮT'}
                     </button>
@@ -1291,11 +1271,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setKlingWatermark(!klingWatermark)}
-                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${
-                        klingWatermark
+                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${klingWatermark
                           ? 'bg-violet-600 text-white shadow-2xs'
                           : 'bg-stone-200 text-stone-700 hover:bg-stone-300'
-                      }`}
+                        }`}
                     >
                       {klingWatermark ? 'BẬT' : 'TẮT'}
                     </button>
@@ -1369,11 +1348,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               {klingTestResult && (
                 <div
                   id="test-kling-feedback"
-                  className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${
-                    klingTestResult.success
+                  className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${klingTestResult.success
                       ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
                       : 'bg-rose-50 border border-rose-200 text-rose-800'
-                  }`}
+                    }`}
                 >
                   {klingTestResult.success ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -1403,19 +1381,18 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
             id="save-api-config-btn"
             type="button"
             onClick={handleSave}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-all active:scale-95 ${
-              activeTab === 'kling'
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-all active:scale-95 ${activeTab === 'kling'
                 ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-200'
                 : activeProvider === 'gpt-image-2'
-                ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
-                : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
-            }`}
+                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+              }`}
           >
             {activeTab === 'kling'
               ? 'Lưu cấu hình Kling AI Video'
               : activeProvider === 'gpt-image-2'
-              ? 'Lưu và Sử dụng GPT-Image-2'
-              : 'Lưu và Sử dụng Gemini'}
+                ? 'Lưu và Sử dụng GPT-Image-2'
+                : 'Lưu và Sử dụng Gemini'}
           </button>
         </div>
       </div>

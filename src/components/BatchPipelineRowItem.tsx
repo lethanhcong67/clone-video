@@ -35,11 +35,12 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowLeft,
-  ArrowRight,
+  FileText,
+  Copy,
+  X,
   RotateCw,
 } from 'lucide-react';
-import { AppliedReplacementConfig, BatchImageItem, BatchSettings, OutfitReference, ApiConfig, CameraMovementType } from '../types';
-import { CAMERA_MOVEMENT_PRESETS } from '../data/presets';
+import { AppliedReplacementConfig, BatchImageItem, BatchSettings, OutfitReference, ApiConfig } from '../types';
 
 interface BatchPipelineRowItemProps {
   item: BatchImageItem;
@@ -49,17 +50,108 @@ interface BatchPipelineRowItemProps {
   uploadedOutfit?: OutfitReference | null;
   uploadedOutfits?: OutfitReference[];
   isProcessingAll: boolean;
-  imageFitCover: boolean;
-  setImageFitCover: React.Dispatch<React.SetStateAction<boolean>>;
   onUpdateItem: (id: string, updates: Partial<BatchImageItem>) => void;
   onRemoveItem: (id: string) => void;
   onProcessSingleItem: (item: BatchImageItem) => Promise<void>;
   onOpenKlingSettings?: () => void;
   onOpenLightbox: (url: string, title: string) => void;
-  onOpenComparison: (item: BatchImageItem) => void;
   onGenerateKlingVideo: (item: BatchImageItem) => void;
   onGenerateInstantVideo: (item: BatchImageItem) => void;
 }
+
+// Helper to construct the full AI prompt text for display/inspection
+const generateFullPromptText = (
+  item: BatchImageItem,
+  settings: BatchSettings,
+  uploadedOutfits: OutfitReference[],
+  uploadedOutfit?: OutfitReference | null
+): string => {
+  const isCharEnabled = Boolean(item.appliedConfig?.enableCharacter);
+  const charPrompt = item.appliedConfig?.characterPrompt?.trim() || '';
+  const isPosePreserved = item.appliedConfig?.preservePose ?? settings.preservePose ?? true;
+
+  const isOutfitEnabled = item.appliedConfig?.enableOutfit !== false;
+  const outfitPrompt = item.appliedConfig?.outfitPrompt?.trim() || settings.outfitPrompt?.trim() || '';
+  const productName = settings.productName?.trim() || '';
+
+  const isBgEnabled = Boolean(item.appliedConfig?.enableBackground);
+  const bgPrompt = item.appliedConfig?.backgroundPrompt?.trim() || '';
+
+  const removeSubtitles = settings.removeSubtitles ?? true;
+  const stylePreset = settings.stylePreset || 'Chân thực / Cinematic (Mặc định)';
+
+  const prods = item.appliedConfig?.productReferences && item.appliedConfig.productReferences.length > 0
+    ? item.appliedConfig.productReferences
+    : (uploadedOutfits.length > 0 ? uploadedOutfits : (uploadedOutfit ? [uploadedOutfit] : []));
+
+  let resolvedOutfitDesc = '';
+  if (isOutfitEnabled && prods.length > 0) {
+    const descs = prods.map((p, idx) => `• ref${idx + 2} (Image ${idx + 2}) [${p.name}]: Thay thế chính xác sản phẩm theo ảnh mẫu`);
+    resolvedOutfitDesc = descs.join('\n');
+    if (productName) resolvedOutfitDesc = `Tên sản phẩm mục tiêu: "${productName}"\n${resolvedOutfitDesc}`;
+    if (outfitPrompt) resolvedOutfitDesc += `\nYêu cầu thay thế bổ sung: ${outfitPrompt}`;
+  } else if (isOutfitEnabled && (productName || outfitPrompt)) {
+    resolvedOutfitDesc = [productName ? `Sản phẩm mục tiêu: ${productName}` : '', outfitPrompt].filter(Boolean).join('\n');
+  }
+
+  const primaryOutfitMandate = isOutfitEnabled
+    ? (isCharEnabled
+        ? `CRITICAL MANDATORY TASK - COMPLETE OUTFIT & PRODUCT SWAP (HIGHEST PRIORITY):
+- Both Image 1 (original photo) and Image 2 (product reference) are provided as direct visual references.
+- YOUR PRIMARY OBJECTIVE: The person in the final photo MUST BE WEARING the exact product shown in Image 2!
+${resolvedOutfitDesc ? `- Chi tiết sản phẩm tham chiếu:\n${resolvedOutfitDesc}` : ''}
+- SURGICAL REPLACEMENT:
+  * Locate the corresponding garment, clothing or accessory in Image 1.
+  * COMPLETELY ERASE and REMOVE this original garment and all old text/patterns from Image 1.
+  * Render the person WEARING the replacement product from Image 2 (ref2).
+  * Transfer ALL visual features of Image 2: exact artwork, prints, colors, fabric textures, neck straps, and waist ties.`
+        : `CRITICAL MANDATE - EXACT PRODUCT REPLACEMENT ONLY (NO CHARACTER ALTERATION / NO NEW PERSON):
+- Both Image 1 (original photo) and Image 2 (product reference) are provided as visual references.
+- YOUR PRIMARY OBJECTIVE: Replace the corresponding item in Image 1 with the exact product shown in Image 2.
+${resolvedOutfitDesc ? `- Chi tiết sản phẩm tham chiếu:\n${resolvedOutfitDesc}` : ''}
+- SURGICAL REPLACEMENT: Identify the item in Image 1. COMPLETELY ERASE all old text, embroidery, and old patterns from this item in Image 1!
+- Render the replacement product matching the exact artwork, print pattern, and colors from Image 2.
+- STRICT RULE: DO NOT add, invent, or introduce any new person, model, human character, or face.
+- Keep the original person's exact face, facial features, hair, identity, body, and pose 100% UNCHANGED. Only replace the clothing/product they are wearing.`)
+    : "PRESERVE ORIGINAL CLOTHING: Keep existing garments and worn accessories completely unchanged.";
+
+  const characterRequirement = isCharEnabled
+    ? (charPrompt
+        ? `CHARACTER MODIFICATION:
+- Modify the subject to match: "${charPrompt}".
+- Seamlessly replace the face, facial features, hair, and age while keeping the natural head tilt, body pose, hand gesture, and emotional expression from Image 1.
+- CRITICAL: Even though her face/identity is changed, HER CLOTHING MUST BE THE REPLACEMENT PRODUCT FROM IMAGE 2 (ref2).`
+        : "CHARACTER: Retain natural character appearance, face, and body pose from Image 1.")
+    : `STRICT PROHIBITION - DO NOT ADD OR CHANGE ANY PERSON OR CHARACTER:
+- DO NOT generate, invent, or add any new person, model, face, or human character into the image.
+- Keep identity, face, eyes, hair, age, and biological features 100% UNCHANGED.`;
+
+  const backgroundDirective = isBgEnabled && bgPrompt
+    ? `BACKGROUND REPLACEMENT DIRECTIVE:
+- ONLY replace the background scenery and environment behind/around the subject with: "${bgPrompt}".
+- CRITICAL: Keep the EXACT spatial position, canvas coordinates, scale, and bounding box of the person and product 100% UNCHANGED from Image 1.`
+    : "BACKGROUND PRESERVATION: Keep the exact background environment, room lighting, depth-of-field, and atmosphere identical to Image 1.";
+
+  const typographyDirectives = isOutfitEnabled
+    ? `TYPOGRAPHY & GRAPHIC DETAIL MANDATE (ULTRA-SHARP VECTOR CLARITY):
+- REPLICATE ALL TEXT & NAMES WITH VECTOR-GRADE CLARITY: Every word, title, name, letter, and decorative typography on the replacement product (Image 2) must be rendered with razor-sharp pixel edges, exact spelling, clean distinct font shapes, and zero blur.
+- PERFECT FONT ALIGNMENT & CONTRAST: Preserve the distinct colorful typography, font weights, and spacing from Image 2 seamlessly integrated into the cloth texture without bleeding, smearing, or distortion.
+- STRICT PROHIBITION OF TYPOGRAPHIC ARTIFACTS: Absolutely NO blurry text, NO smudged lettering, NO distorted or melting font shapes, NO scrambled pseudo-characters, NO hallucinated duplicate names, and NO low-resolution artifacts.`
+    : "";
+
+  return [
+    "TASK: High-Precision Image-to-Image Multi-Reference Product Inpainting & Editing.",
+    "- Image 1: Ground-truth base photo (scene composition, camera angle, lighting, background).",
+    "- Image 2: Target product/outfit reference to replace onto the subject in Image 1.",
+    primaryOutfitMandate,
+    typographyDirectives,
+    characterRequirement,
+    isPosePreserved ? "Strictly maintain the exact same body posture, gestures, and camera angle from the source image." : "",
+    backgroundDirective,
+    removeSubtitles ? "SUBTITLE REMOVAL: Cleanly erase any movie subtitles, captions, watermarks, or text overlays." : "",
+    `STYLE: ${stylePreset}. Photorealistic master photography, 8k resolution, authentic lighting, no cartoons, no drawings, no extra borders.`,
+  ].filter(Boolean).join("\n\n");
+};
 
 export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
   item,
@@ -69,18 +161,17 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
   uploadedOutfit,
   uploadedOutfits = [],
   isProcessingAll,
-  imageFitCover,
-  setImageFitCover,
   onUpdateItem,
   onRemoveItem,
   onProcessSingleItem,
   onOpenKlingSettings,
   onOpenLightbox,
-  onOpenComparison,
   onGenerateKlingVideo,
   onGenerateInstantVideo,
 }) => {
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const [isFullPromptModalOpen, setIsFullPromptModalOpen] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
 
   const isRowProcessing = item.status === 'processing';
   const isRowCompleted = item.status === 'completed' && Boolean(item.resultImageUrl);
@@ -142,13 +233,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
     document.body.removeChild(link);
   };
 
-  // Video quick suggestions
-  const videoPromptSuggestions = [
-    'Giữ cố định thiết kế sản phẩm, người mẫu cử động tự nhiên',
-    'Chuyển động nhẹ nhàng cinematic',
-    'Người mẫu tạo dáng thanh lịch, tóc bay nhẹ',
-    'Camera lia chậm, giữ nguyên logo và form áo',
-  ];
+
 
   return (
     <div
@@ -235,19 +320,6 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setImageFitCover((prev) => !prev)}
-                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors flex items-center gap-1 cursor-pointer ${
-                    imageFitCover
-                      ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
-                      : 'text-stone-500 hover:text-stone-800 bg-stone-200/70 hover:bg-stone-200'
-                  }`}
-                  title={imageFitCover ? 'Đang phóng to phủ kín (Bấm để xem vừa khung)' : 'Bấm để phóng to phủ kín'}
-                >
-                  <Square className={`w-3 h-3 ${imageFitCover ? 'fill-indigo-600 text-indigo-600' : ''}`} />
-                  <span>{imageFitCover ? 'Phủ kín' : 'Vừa khung'}</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => onOpenLightbox(item.dataUrl, `Ảnh gốc: ${item.name}`)}
                   className="text-stone-400 hover:text-stone-700 p-1 rounded hover:bg-stone-200/60 transition-colors cursor-pointer"
                   title="Phóng to ảnh gốc"
@@ -262,7 +334,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                 src={item.dataUrl}
                 alt={`Original ${item.name}`}
                 referrerPolicy="no-referrer"
-                className={`w-full h-full transition-all duration-200 ${imageFitCover ? 'object-cover' : 'object-contain'}`}
+                className="w-full h-full object-contain transition-all duration-200"
               />
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                 <button
@@ -272,14 +344,6 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                 >
                   <Eye className="w-3.5 h-3.5" />
                   Xem ảnh gốc
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setImageFitCover((prev) => !prev)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-stone-900/90 text-white text-xs font-semibold shadow-md hover:bg-black cursor-pointer"
-                >
-                  <Square className="w-3.5 h-3.5" />
-                  {imageFitCover ? 'Vừa khung' : 'Phủ kín ô'}
                 </button>
               </div>
             </div>
@@ -307,14 +371,25 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                 <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
                 2. Cấu hình thay thế
               </span>
-              {isConfigApplied ? (
-                <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded">
-                  <CheckCheck className="w-3 h-3" />
-                  Đã đồng bộ
-                </span>
-              ) : (
-                <span className="text-[10px] text-stone-400 font-medium">Theo mẫu chung</span>
-              )}
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsFullPromptModalOpen(true)}
+                  className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 px-2 py-0.5 rounded transition-colors cursor-pointer"
+                  title="Xem toàn bộ prompt AI sẽ gửi đi"
+                >
+                  <Eye className="w-3 h-3 text-indigo-600" />
+                  <span>Xem prompt đầy đủ</span>
+                </button>
+                {isConfigApplied ? (
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded">
+                    <CheckCheck className="w-3 h-3" />
+                    Đã đồng bộ
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-stone-400 font-medium">Theo mẫu chung</span>
+                )}
+              </div>
             </div>
 
             {/* Scrollable specs container */}
@@ -322,73 +397,62 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
               
               {/* Sub-item A: Character */}
               {(() => {
-                const hasCharPrompt = Boolean(
-                  (item.appliedConfig?.characterPrompt !== undefined
-                    ? item.appliedConfig.characterPrompt.trim()
-                    : settings.characterPrompt.trim())
-                );
-                const isCharEnabled = Boolean(
-                  (item.appliedConfig?.enableCharacter ?? settings.enableCharacter) && hasCharPrompt
-                );
-                const isPosePreserved = item.appliedConfig?.preservePose ?? settings.preservePose;
-                const isCustomCharPrompt =
-                  item.appliedConfig?.characterPrompt !== undefined &&
-                  item.appliedConfig.characterPrompt !== settings.characterPrompt;
-                const currentCharVal =
-                  item.appliedConfig?.characterPrompt !== undefined
-                    ? item.appliedConfig.characterPrompt
-                    : appliedCharacter;
+                const isCharEnabled = Boolean(item.appliedConfig?.enableCharacter);
+                const isPosePreserved = item.appliedConfig?.preservePose ?? true;
+                const currentCharVal = item.appliedConfig?.characterPrompt || '';
 
                 return (
                   <div
-                    className={`p-2 rounded-lg border transition-all ${
+                    className={`p-2.5 rounded-lg border transition-all ${
                       isCharEnabled
-                        ? 'bg-white border-violet-200 shadow-2xs'
-                        : 'bg-stone-100/70 border-stone-200'
+                        ? 'bg-white border-violet-300 shadow-2xs'
+                        : 'bg-emerald-50/60 border-emerald-200'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-1 mb-1.5">
-                      <div className="flex items-center gap-1 text-[11px] font-bold text-stone-900">
-                        <User className={`w-3.5 h-3.5 ${isCharEnabled ? 'text-violet-600' : 'text-stone-500'}`} />
-                        <span>Nhân vật:</span>
-                        {isCustomCharPrompt && (
-                          <span className="text-[9px] font-bold text-violet-700 bg-violet-100 px-1 py-0.2 rounded leading-none">
-                            Riêng
-                          </span>
-                        )}
+                    <div className="flex items-center justify-between gap-1 mb-2">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-stone-900">
+                        <User className={`w-3.5 h-3.5 ${isCharEnabled ? 'text-violet-600' : 'text-emerald-600'}`} />
+                        <span>Tùy chọn nhân vật:</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nextEnabled = !isCharEnabled;
-                          updateItemConfig({
-                            enableCharacter: nextEnabled,
-                            characterPrompt: item.appliedConfig?.characterPrompt ?? appliedCharacter ?? settings.characterPrompt,
-                          });
-                        }}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
-                          isCharEnabled
-                            ? 'bg-violet-100 text-violet-800 hover:bg-violet-200 border border-violet-300/80'
-                            : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300/80'
-                        }`}
-                        title={isCharEnabled ? 'Bấm để giữ nguyên ảnh gốc' : 'Bấm để thay thế nhân vật'}
-                      >
-                        {isCharEnabled ? (
-                          <>
-                            <UserCheck className="w-3 h-3 text-violet-600" />
-                            <span>Thay thế</span>
-                          </>
-                        ) : (
-                          <>
-                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                            <span>Giữ gốc</span>
-                          </>
-                        )}
-                      </button>
+
+                      {/* Segmented Switch: Giữ người gốc vs Đổi nhân vật */}
+                      <div className="inline-flex rounded-md p-0.5 bg-stone-200/80 text-[10px] font-bold">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateItemConfig({
+                              enableCharacter: false,
+                            });
+                          }}
+                          className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                            !isCharEnabled
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'text-stone-600 hover:text-stone-900'
+                          }`}
+                        >
+                          Giữ người gốc
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateItemConfig({
+                              enableCharacter: true,
+                              characterPrompt: currentCharVal || '',
+                            });
+                          }}
+                          className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                            isCharEnabled
+                              ? 'bg-violet-600 text-white shadow-xs'
+                              : 'text-stone-600 hover:text-stone-900'
+                          }`}
+                        >
+                          Đổi nhân vật
+                        </button>
+                      </div>
                     </div>
 
                     {isCharEnabled ? (
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         <textarea
                           rows={2}
                           value={currentCharVal}
@@ -398,51 +462,31 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                               enableCharacter: true,
                             });
                           }}
-                          placeholder="Nhập mô tả nhân vật..."
-                          className="w-full text-xs font-medium text-stone-800 bg-stone-50/70 hover:bg-white focus:bg-white border border-stone-200 focus:border-violet-500 focus:ring-1 focus:ring-violet-200 rounded p-1.5 transition-all resize-none outline-none leading-relaxed placeholder:text-stone-400 placeholder:italic"
+                          placeholder="Nhập mô tả nhân vật mới: tuổi, giới tính, phong cách, tóc..."
+                          className="w-full text-xs font-medium text-stone-800 bg-stone-50/80 hover:bg-white focus:bg-white border border-stone-300 focus:border-violet-500 focus:ring-1 focus:ring-violet-200 rounded p-1.5 transition-all resize-none outline-none leading-relaxed placeholder:text-stone-400"
                         />
-                        <div className="flex items-center justify-between gap-1 pt-0.5">
+                        <div className="flex items-center justify-between gap-1 pt-0.5 text-[10.5px]">
                           <button
                             type="button"
                             onClick={() => updateItemConfig({ preservePose: !isPosePreserved })}
-                            className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                            className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded border transition-colors cursor-pointer ${
                               isPosePreserved
                                 ? 'text-violet-700 bg-violet-50 border-violet-200'
                                 : 'text-stone-500 bg-stone-100 border-stone-200'
                             }`}
                           >
-                            <Check className={`w-2.5 h-2.5 ${isPosePreserved ? 'opacity-100 text-violet-600' : 'opacity-0'}`} />
+                            <Check className={`w-3 h-3 ${isPosePreserved ? 'opacity-100 text-violet-600' : 'opacity-0'}`} />
                             <span>{isPosePreserved ? 'Giữ dáng gốc' : 'Dáng tự do'}</span>
                           </button>
-
-                          {isCustomCharPrompt && (
-                            <button
-                              type="button"
-                              onClick={() => updateItemConfig({ characterPrompt: settings.characterPrompt })}
-                              className="text-[10px] text-stone-400 hover:text-violet-600 font-medium underline flex items-center gap-0.5 cursor-pointer"
-                            >
-                              <RotateCcw className="w-2.5 h-2.5" />
-                              <span>Mẫu chung</span>
-                            </button>
-                          )}
+                          <span className="text-[10px] text-stone-400">
+                            {currentCharVal.length} ký tự
+                          </span>
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-between text-[11px] text-emerald-800 font-medium bg-emerald-50 px-2 py-1 rounded border border-emerald-200/60">
-                        <span className="truncate">Giữ nguyên người ảnh gốc</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateItemConfig({
-                              enableCharacter: true,
-                              characterPrompt: item.appliedConfig?.characterPrompt || settings.characterPrompt || 'nữ 65 tuổi',
-                            });
-                          }}
-                          className="text-[10.5px] font-bold text-violet-700 hover:underline flex items-center gap-0.5 ml-1 shrink-0 cursor-pointer"
-                        >
-                          <Pencil className="w-2.5 h-2.5" />
-                          <span>Sửa</span>
-                        </button>
+                      <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 font-medium bg-emerald-100/60 px-2 py-1.5 rounded border border-emerald-200/80">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span className="truncate">Giữ 100% người mẫu & biểu cảm của ảnh gốc</span>
                       </div>
                     )}
                   </div>
@@ -673,7 +717,15 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
           </div>
 
           <div className="mt-2 flex items-center justify-between text-[11px] pt-2 border-t border-stone-200/60 shrink-0">
-            <span className="text-stone-400">Đồng bộ mẫu mới</span>
+            <button
+              type="button"
+              onClick={() => setIsFullPromptModalOpen(true)}
+              className="text-stone-500 hover:text-indigo-600 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
+              title="Xem toàn bộ prompt AI sẽ gửi đi"
+            >
+              <FileText className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Xem prompt đầy đủ</span>
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -713,37 +765,14 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
 
               <div className="flex items-center gap-1">
                 {isRowCompleted && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setImageFitCover((prev) => !prev)}
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors flex items-center gap-1 cursor-pointer ${
-                        imageFitCover
-                          ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
-                          : 'text-stone-500 hover:text-stone-800 bg-stone-200/70 hover:bg-stone-200'
-                      }`}
-                      title={imageFitCover ? 'Đang phủ kín (Bấm để xem vừa khung)' : 'Bấm để phủ kín'}
-                    >
-                      <Square className={`w-3 h-3 ${imageFitCover ? 'fill-indigo-600 text-indigo-600' : ''}`} />
-                      <span>{imageFitCover ? 'Phủ kín' : 'Vừa khung'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenComparison(item)}
-                      className="text-indigo-600 hover:text-indigo-800 text-[10.5px] font-semibold px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-200 transition-colors cursor-pointer"
-                      title="So sánh Trước / Sau"
-                    >
-                      So sánh
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenLightbox(item.resultImageUrl!, `Ảnh mới đã thay thế: ${item.name}`)}
-                      className="text-stone-400 hover:text-stone-700 p-1 rounded hover:bg-stone-200/60 transition-colors cursor-pointer"
-                      title="Phóng to ảnh mới"
-                    >
-                      <Maximize2 className="w-3.5 h-3.5" />
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={() => onOpenLightbox(item.resultImageUrl!, `Ảnh mới đã thay thế: ${item.name}`)}
+                    className="text-stone-400 hover:text-stone-700 p-1 rounded hover:bg-stone-200/60 transition-colors cursor-pointer"
+                    title="Phóng to ảnh mới"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
                 )}
               </div>
             </div>
@@ -788,7 +817,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                     src={item.resultImageUrl}
                     alt={`Result ${item.name}`}
                     referrerPolicy="no-referrer"
-                    className={`w-full h-full transition-all duration-200 ${imageFitCover ? 'object-cover' : 'object-contain'}`}
+                    className="w-full h-full object-contain transition-all duration-200"
                   />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                     <button
@@ -798,14 +827,6 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                     >
                       <Eye className="w-3.5 h-3.5" />
                       Phóng to
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setImageFitCover((prev) => !prev)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-stone-900/90 text-white text-xs font-semibold shadow-md hover:bg-black cursor-pointer"
-                    >
-                      <Square className="w-3.5 h-3.5" />
-                      {imageFitCover ? 'Vừa khung' : 'Phủ kín ô'}
                     </button>
                     <button
                       type="button"
@@ -1019,104 +1040,28 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                   </div>
                 </div>
               ) : isRowCompleted ? (
-                /* STATE 4: Ready for Video Creation (Studio Form inside Column 4 - Compact & Space-Saving) */
+                /* STATE 4: Ready for Video Creation (Direct Manual Video Prompt Input) */
                 <div className="flex-1 flex flex-col justify-between p-2.5 sm:p-3 bg-white rounded-lg border border-violet-200/80 shadow-2xs">
                   <div className="space-y-2 flex-1 flex flex-col min-h-0">
-                    
-                    {/* Header: Label + Compact Camera Dropdown inline on the SAME line */}
+                    {/* Header: Manual Prompt Label */}
                     <div className="flex items-center justify-between gap-1.5 shrink-0">
-                      <div className="flex items-center gap-1 text-[11px] font-bold text-stone-800 shrink-0">
-                        <Film className="w-3 h-3 text-violet-600" />
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-stone-800 shrink-0">
+                        <Film className="w-3.5 h-3.5 text-violet-600" />
                         <span>Prompt video:</span>
                       </div>
-
-                      {/* Compact Camera Selector directly beside the prompt label */}
-                      <div className="flex items-center gap-1 min-w-0">
-                        <Camera className="w-3 h-3 text-violet-500 shrink-0" />
-                        <select
-                          value={item.selectedCameraMotion || settings.defaultCameraMotion || 'static'}
-                          onChange={(e) => {
-                            const newMotionId = e.target.value as CameraMovementType;
-                            const selectedPreset = CAMERA_MOVEMENT_PRESETS.find((p) => p.id === newMotionId);
-                            if (selectedPreset) {
-                              onUpdateItem(item.id, {
-                                selectedCameraMotion: newMotionId,
-                                videoPrompt: selectedPreset.prompt,
-                              });
-                            }
-                          }}
-                          className="text-[10.5px] font-bold text-violet-900 bg-violet-50 hover:bg-violet-100 border border-violet-200 focus:border-violet-500 rounded px-1.5 py-0.5 outline-none cursor-pointer truncate max-w-[130px] sm:max-w-[155px]"
-                          title="Chọn góc máy & chuyển động camera"
-                        >
-                          {CAMERA_MOVEMENT_PRESETS.map((preset) => (
-                            <option key={preset.id} value={preset.id}>
-                              {preset.title.split(' ')[0]} ({preset.badge})
-                            </option>
-                          ))}
-                        </select>
-
-                        {/* Reset prompt button if modified */}
-                        {(() => {
-                          const currentMotionId = item.selectedCameraMotion || settings.defaultCameraMotion || 'static';
-                          const activePreset = CAMERA_MOVEMENT_PRESETS.find((p) => p.id === currentMotionId);
-                          const isCustom = item.videoPrompt && activePreset && item.videoPrompt !== activePreset.prompt;
-                          return isCustom ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (activePreset) {
-                                  onUpdateItem(item.id, { videoPrompt: activePreset.prompt });
-                                }
-                              }}
-                              className="text-[10px] text-violet-600 hover:text-violet-800 p-0.5 rounded hover:bg-violet-50 shrink-0 cursor-pointer"
-                              title="Khôi phục lại prompt chuẩn của góc máy này"
-                            >
-                              <RotateCcw className="w-2.5 h-2.5" />
-                            </button>
-                          ) : null;
-                        })()}
-                      </div>
-                    </div>
-
-                    {/* Quick Camera Motion Badges (Space-saving pills) */}
-                    <div className="flex items-center gap-1 overflow-x-auto py-0.5 text-[9.5px] shrink-0">
-                      {CAMERA_MOVEMENT_PRESETS.map((preset) => {
-                        const isSelected = (item.selectedCameraMotion || settings.defaultCameraMotion || 'static') === preset.id;
-                        return (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            onClick={() => {
-                              onUpdateItem(item.id, {
-                                selectedCameraMotion: preset.id,
-                                videoPrompt: preset.prompt,
-                              });
-                            }}
-                            className={`shrink-0 px-1.5 py-0.5 rounded font-medium transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-violet-600 text-white font-bold shadow-2xs'
-                                : 'bg-stone-100 hover:bg-violet-50 hover:text-violet-700 text-stone-600 border border-stone-200/60'
-                            }`}
-                            title={preset.description}
-                          >
-                            {preset.title.split(' ')[0]}
-                          </button>
-                        );
-                      })}
+                      <span className="text-[10px] text-violet-600 font-medium bg-violet-50 px-1.5 py-0.5 rounded border border-violet-100">
+                        Nhập thủ công
+                      </span>
                     </div>
 
                     {/* Video Prompt Textarea */}
                     <div className="flex-1 min-h-0 flex flex-col">
                       <textarea
-                        rows={3}
-                        value={
-                          item.videoPrompt !== undefined
-                            ? item.videoPrompt
-                            : (CAMERA_MOVEMENT_PRESETS.find((p) => p.id === (item.selectedCameraMotion || settings.defaultCameraMotion || 'static'))?.prompt || '')
-                        }
+                        rows={4}
+                        value={item.videoPrompt || ''}
                         onChange={(e) => onUpdateItem(item.id, { videoPrompt: e.target.value })}
-                        placeholder="Nhập prompt video Kling AI..."
-                        className="w-full flex-1 min-h-[75px] text-xs rounded-md border border-stone-300 p-2 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1.5 focus:ring-violet-500 bg-stone-50/50 resize-none leading-relaxed"
+                        placeholder="Nhập prompt mô tả chuyển động video của bạn tại đây (ví dụ: người mẫu tạo dáng tự nhiên, quay chậm cinematic, giữ cố định form áo và logo)..."
+                        className="w-full flex-1 min-h-[90px] text-xs rounded-md border border-stone-300 p-2 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1.5 focus:ring-violet-500 bg-stone-50/50 resize-none leading-relaxed"
                       />
                     </div>
                   </div>
@@ -1186,6 +1131,131 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Full AI Image Prompt Modal */}
+      {isFullPromptModalOpen && (
+        <div
+          id={`full-prompt-modal-${item.id}`}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setIsFullPromptModalOpen(false)}
+        >
+          <div
+            className="relative max-w-2xl w-full max-h-[88vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                    <span>Prompt tạo ảnh AI đầy đủ</span>
+                    <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
+                      Hàng #{index + 1} • {item.name}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-stone-500">
+                    Toàn bộ nội dung lệnh và hướng dẫn inpainting sẽ gửi sang AI để xử lý ảnh này
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFullPromptModalOpen(false)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-3 min-h-0">
+              {/* Quick Summary Chips */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="p-2 rounded-lg bg-stone-50 border border-stone-200">
+                  <span className="text-[10px] text-stone-400 font-medium block">Nhân vật</span>
+                  <span className="font-bold text-stone-800 truncate block text-[11px]">
+                    {item.appliedConfig?.enableCharacter
+                      ? item.appliedConfig?.characterPrompt || 'Thay đổi nhân vật'
+                      : 'Giữ 100% người gốc'}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-stone-50 border border-stone-200">
+                  <span className="text-[10px] text-stone-400 font-medium block">Trang phục / Đồ</span>
+                  <span className="font-bold text-emerald-700 truncate block text-[11px]">
+                    {item.appliedConfig?.enableOutfit !== false ? 'Thay theo ref2' : 'Giữ đồ gốc'}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-stone-50 border border-stone-200">
+                  <span className="text-[10px] text-stone-400 font-medium block">Bối cảnh / Nền</span>
+                  <span className="font-bold text-stone-800 truncate block text-[11px]">
+                    {item.appliedConfig?.enableBackground && item.appliedConfig?.backgroundPrompt
+                      ? item.appliedConfig.backgroundPrompt
+                      : 'Giữ bối cảnh gốc'}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-stone-50 border border-stone-200">
+                  <span className="text-[10px] text-stone-400 font-medium block">Xóa phụ đề</span>
+                  <span className="font-bold text-stone-800 truncate block text-[11px]">
+                    {settings.removeSubtitles ? 'Đang bật' : 'Tắt'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Full Raw Prompt Box */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Nội dung Prompt đầy đủ (Gửi sang GPT-Image-2 / Gemini / AI Engine):</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fullPrompt = generateFullPromptText(item, settings, uploadedOutfits, uploadedOutfit);
+                      navigator.clipboard.writeText(fullPrompt);
+                      setCopiedPrompt(true);
+                      setTimeout(() => setCopiedPrompt(false), 2000);
+                    }}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 transition-colors cursor-pointer"
+                  >
+                    {copiedPrompt ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-600">Đã sao chép!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Sao chép prompt</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="bg-stone-900 text-stone-100 rounded-xl p-3.5 font-mono text-xs leading-relaxed max-h-[340px] overflow-y-auto whitespace-pre-wrap select-text border border-stone-800 shadow-inner">
+                  {generateFullPromptText(item, settings, uploadedOutfits, uploadedOutfit)}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="pt-3 border-t border-stone-200 flex items-center justify-between">
+              <span className="text-[11px] text-stone-400">
+                Prompt được cấu trúc tự động theo các thiết lập của hàng #{index + 1}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsFullPromptModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-bold hover:bg-stone-800 transition-colors cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

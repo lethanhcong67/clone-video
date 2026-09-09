@@ -12,7 +12,7 @@ const PORT = 3000;
 
 // Helper to normalize Kling AI base endpoint
 function normalizeKlingBaseUrl(inputUrl?: string): string {
-  const defaultEndpoint = "https://api.klingai.com";
+  const defaultEndpoint = "https://api.openlux.ai/kling";
   const raw = (inputUrl && inputUrl.trim()) || defaultEndpoint;
   let clean = raw.replace(/\/+$/, "");
   // If user provided a full path like https://api.openlux.ai/kling/v1/videos/image2video or https://api.klingai.com/v1/videos/image2video
@@ -70,9 +70,9 @@ function resolveKlingAuthToken(apiKeyOrAk?: string, secretKey?: string): string 
   return rawKey;
 }
 
-// Helper to normalize OpenAI / MN API endpoint
+// Helper to normalize OpenAI / OpenLux / Custom API endpoint
 function normalizeEditsEndpoint(inputUrl?: string): { editUrl: string; baseUrl: string } {
-  const defaultEndpoint = "https://www.mnapi.com/v1/images/edits";
+  const defaultEndpoint = "https://api.openlux.ai/v1/images/edits";
   const raw = (inputUrl && inputUrl.trim()) || defaultEndpoint;
   let clean = raw.replace(/\/+$/, "");
 
@@ -193,16 +193,16 @@ async function startServer() {
     }
   });
 
-  // Validate API key endpoint for GPT-Image-2 (OpenAI / MN API / OpenAI-compatible)
+  // Validate API key endpoint for GPT-Image-2 (OpenAI / OpenLux AI / OpenAI-compatible)
   app.post("/api/validate-gpt-image-key", async (req, res) => {
     try {
-      const { apiKey, baseUrl = "https://www.mnapi.com/v1/images/edits", model = "gpt-image-2" } = req.body;
+      const { apiKey, baseUrl = "https://api.openlux.ai/v1/images/edits", model = "gpt-image-2" } = req.body;
       const keyToTest = (apiKey && apiKey.trim()) || process.env.OPENAI_API_KEY;
 
       if (!keyToTest) {
         return res.status(400).json({
           valid: false,
-          error: "Chưa nhập khóa API của GPT-Image-2 / MN API. Vui lòng nhập API Key (thường bắt đầu bằng sk-...).",
+          error: "Chưa nhập khóa API của GPT-Image-2 / OpenLux AI. Vui lòng nhập API Key (thường bắt đầu bằng sk-...).",
         });
       }
 
@@ -251,7 +251,7 @@ async function startServer() {
   // Validate API key endpoint for Kling AI Video
   app.post("/api/validate-kling-key", async (req, res) => {
     try {
-      const { apiKey, accessKey, secretKey, baseUrl = "https://api.klingai.com" } = req.body;
+      const { apiKey, accessKey, secretKey, baseUrl = "https://api.openlux.ai/kling" } = req.body;
       const cleanBaseUrl = normalizeKlingBaseUrl(baseUrl);
       const token = resolveKlingAuthToken(apiKey || accessKey, secretKey);
 
@@ -323,7 +323,7 @@ async function startServer() {
         apiKey,
         accessKey,
         secretKey,
-        baseUrl = "https://api.klingai.com",
+        baseUrl = "https://api.openlux.ai/kling",
         model,
         model_name,
         mode = "pro",
@@ -466,7 +466,7 @@ async function startServer() {
         apiKey,
         accessKey,
         secretKey,
-        baseUrl = "https://api.klingai.com",
+        baseUrl = "https://api.openlux.ai/kling",
       } = req.query as Record<string, string>;
 
       if (!taskId) {
@@ -1046,12 +1046,18 @@ ${resolvedOutfitDesc}
 - Only inpaint the new background around the subject, integrating realistic contact shadows, depth-of-field, and ambient lighting seamlessly.`
           : (preserveBackground ? "BACKGROUND PRESERVATION: Keep the exact background environment, room lighting, depth-of-field, and cinematic atmosphere identical to Image 1." : "");
 
+        const typographyDirectives = `TYPOGRAPHY & GRAPHIC DETAIL MANDATE (ULTRA-SHARP VECTOR CLARITY):
+- REPLICATE ALL TEXT & NAMES WITH VECTOR-GRADE CLARITY: Every word, title, name, letter, and decorative typography on the replacement product (Image 2) must be rendered with razor-sharp pixel edges, exact spelling, clean distinct font shapes, and zero blur.
+- PERFECT FONT ALIGNMENT & CONTRAST: Preserve the distinct colorful typography, font weights, and spacing from Image 2 seamlessly integrated into the cloth texture without bleeding, smearing, or distortion.
+- STRICT PROHIBITION OF TYPOGRAPHIC ARTIFACTS: Absolutely NO blurry text, NO smudged lettering, NO distorted or melting font shapes, NO scrambled pseudo-characters, NO hallucinated duplicate names, and NO low-resolution artifacts.`;
+
         // Build comprehensive prompt for GPT-Image-2 / MN API edits grounded on Image 1 and Image 2
         const promptInstructions = [
           "TASK: High-Precision Image-to-Image Multi-Reference Product Inpainting & Editing.",
           `- Image 1: Ground-truth base photo (${hasBgChange ? "exact subject location, character position, product placement" : "scene composition, camera angle, lighting, background"}).`,
           "- Image 2: Target product/outfit reference to replace onto the subject in Image 1.",
           primaryOutfitMandate,
+          typographyDirectives,
           characterRequirement,
           preservePose ? "Strictly maintain the exact same body posture, gestures, and camera angle from the source image." : "",
           backgroundDirective,
@@ -1065,7 +1071,7 @@ ${resolvedOutfitDesc}
         let pngBuffer: Buffer | null = null;
         const productBlobs: Array<{ filename: string; blob: Blob; refIndex: number; size: number }> = [];
 
-        // Primary execution: Call the exact edit endpoint (e.g. https://www.mnapi.com/v1/images/edits)
+        // Primary execution: Call the exact edit endpoint (e.g. https://api.openlux.ai/v1/images/edits)
         try {
           const rawBuffer = Buffer.from(baseOriginal, "base64");
           // Convert input image buffer to an RGBA PNG buffer using Sharp
@@ -1096,7 +1102,7 @@ ${resolvedOutfitDesc}
               }
               productBlobs.push({
                 filename: `image_${prod.refIndex}_product_reference.png`,
-                blob: new Blob([prodPng], { type: "image/png" }),
+                blob: new Blob([new Uint8Array(prodPng)], { type: "image/png" }),
                 refIndex: prod.refIndex,
                 size: prodPng.length,
               });
@@ -1105,7 +1111,8 @@ ${resolvedOutfitDesc}
 
           const formData = new FormData();
           // Image 1: Base scene photograph
-          formData.append("image", new Blob([pngBuffer || rawBuffer], { type: "image/png" }), "image_1_base.png");
+          const mainImageBuffer = pngBuffer || rawBuffer;
+          formData.append("image", new Blob([new Uint8Array(mainImageBuffer)], { type: "image/png" }), "image_1_base.png");
           // Image 2..N: Target product reference image files
           for (const p of productBlobs) {
             formData.append("image", p.blob, p.filename);
@@ -1135,7 +1142,7 @@ ${resolvedOutfitDesc}
               {
                 role: "Image 1 (Ảnh gốc - Bố cục, bối cảnh, tư thế)",
                 filename: "image_1_base.png",
-                size: `${pngBuffer.length} bytes (1024x1024 RGBA PNG)`,
+                size: `${mainImageBuffer.length} bytes (1024x1024 RGBA PNG)`,
               },
               ...productBlobs.map((p) => ({
                 role: `Image ${p.refIndex} (Ảnh sản phẩm/trang phục tham chiếu cần thay thế)`,
@@ -1171,7 +1178,7 @@ ${resolvedOutfitDesc}
             ) {
               console.warn("Proxy endpoint only accepts single file, retrying with single image + vision prompt...");
               const singleFormData = new FormData();
-              singleFormData.append("image", new Blob([pngBuffer], { type: "image/png" }), "image.png");
+              singleFormData.append("image", new Blob([new Uint8Array(mainImageBuffer)], { type: "image/png" }), "image.png");
               singleFormData.append("prompt", promptInstructions);
               if (gptModel) singleFormData.append("model", gptModel);
               singleFormData.append("size", gptSize);
@@ -1220,11 +1227,11 @@ ${resolvedOutfitDesc}
                 }).png().toBuffer();
 
                 const retryFormData = new FormData();
-                retryFormData.append("image", new Blob([pngBuffer], { type: "image/png" }), "image_1_base.png");
+                retryFormData.append("image", new Blob([new Uint8Array(mainImageBuffer)], { type: "image/png" }), "image_1_base.png");
                 for (const p of productBlobs) {
                   retryFormData.append("image", p.blob, p.filename);
                 }
-                retryFormData.append("mask", new Blob([maskBuffer], { type: "image/png" }), "mask.png");
+                retryFormData.append("mask", new Blob([new Uint8Array(maskBuffer)], { type: "image/png" }), "mask.png");
                 retryFormData.append("prompt", promptInstructions);
                 if (gptModel) retryFormData.append("model", gptModel);
                 retryFormData.append("size", gptSize);
@@ -1439,8 +1446,14 @@ ${resolvedOutfitDesc}
      : "- STRICT RULE: Seamlessly replace or place these exact products into ref1 WITHOUT adding or altering any person or human model. If ref1 has a person, keep their exact face, identity, hair, skin, and body 100% UNCHANGED, only replacing their outfit or placing the accessory naturally. If ref1 does NOT have a person (e.g. an apron hanging on a wall hook or displayed on a rack), DO NOT add any person or character at all - simply replace the hanging/displayed item in place on the hook/wall!"}
    ${outfitPrompt ? `- User instruction notes: "${outfitPrompt}"` : ""}`
           : (enableOutfit && outfitPrompt ? `1. TARGET PRODUCT / OUTFIT REPLACEMENT: Replace garment or accessories with: "${outfitPrompt}". ${!enableCharacter ? 'DO NOT add any person or character.' : ''}` : "1. OUTFIT & PRODUCTS: Keep all original clothing, garments, and worn jewelry completely unchanged."),
+        enableOutfit && normalizedProductRefs.length > 0
+          ? `2. TYPOGRAPHY & GRAPHIC DETAIL MANDATE (ULTRA-SHARP VECTOR CLARITY):
+   - REPLICATE ALL TEXT & NAMES WITH VECTOR-GRADE CLARITY: Every word, title, name, letter, and decorative typography on the replacement product (Image 2) must be rendered with razor-sharp pixel edges, exact spelling, clean distinct font shapes, and zero blur.
+   - PERFECT FONT ALIGNMENT & CONTRAST: Preserve the distinct colorful typography, font weights, and spacing from Image 2 seamlessly integrated into the cloth texture without bleeding, smearing, or distortion.
+   - STRICT PROHIBITION OF TYPOGRAPHIC ARTIFACTS: Absolutely NO blurry text, NO smudged lettering, NO distorted or melting font shapes, NO scrambled pseudo-characters, NO hallucinated duplicate names, and NO low-resolution artifacts.`
+          : "",
         backgroundPrompt && backgroundPrompt.trim()
-          ? `2. FOREGROUND POSITION & SUBJECT LOCK (CRITICAL):
+          ? `3. FOREGROUND POSITION & SUBJECT LOCK (CRITICAL):
    - STRICT POSITION LOCK: Keep the EXACT spatial position, canvas coordinates, scale, and bounding box of the person/character and product from Primary Image 1 100% UNCHANGED.
    - DO NOT move, shift, re-center, or resize the character or product.
    - The person's body pose, posture, hands, face, and worn/displayed product must remain in their exact same spot.
@@ -1699,7 +1712,7 @@ CRITICAL TASK: Replace the corresponding garment/clothing/apron worn or displaye
   // Vite integration
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, allowedHosts: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
