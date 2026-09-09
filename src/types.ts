@@ -34,6 +34,7 @@ export interface AppliedReplacementConfig {
   outfitImageName?: string | null;
   preservePose?: boolean;
   preserveBackground?: boolean;
+  customPrompt?: string; // Direct full AI prompt customized by user
   appliedAt?: number;
 }
 
@@ -58,6 +59,7 @@ export interface BatchImageItem {
   videoProgress?: number;
   videoTaskId?: string;
   videoError?: string;
+  customPrompt?: string; // Direct customized prompt for this image item
   // Applied character & outfit/product replacement config for this specific row
   appliedConfig?: AppliedReplacementConfig;
   customSettings?: {

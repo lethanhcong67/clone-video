@@ -172,12 +172,66 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const [isFullPromptModalOpen, setIsFullPromptModalOpen] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [localPrompt, setLocalPrompt] = useState<string>('');
+  const [isSavedToast, setIsSavedToast] = useState(false);
 
   const isRowProcessing = item.status === 'processing';
   const isRowCompleted = item.status === 'completed' && Boolean(item.resultImageUrl);
   const isRowError = item.status === 'error';
   const hasVideo = Boolean(item.videoUrl);
   const isVideoGenerating = item.videoStatus === 'generating';
+
+  // Default auto-generated prompt
+  const defaultPromptText = generateFullPromptText(item, settings, uploadedOutfits, uploadedOutfit);
+  const activePromptText = (item.customPrompt || item.appliedConfig?.customPrompt || defaultPromptText).trim();
+  const isPromptCustomized = Boolean(
+    (item.customPrompt || item.appliedConfig?.customPrompt) &&
+    (item.customPrompt || item.appliedConfig?.customPrompt)?.trim() !== defaultPromptText.trim()
+  );
+
+  const handleOpenPromptModal = () => {
+    setLocalPrompt(item.customPrompt || item.appliedConfig?.customPrompt || defaultPromptText);
+    setIsFullPromptModalOpen(true);
+  };
+
+  const handleSaveCustomPrompt = () => {
+    const trimmed = localPrompt.trim();
+    const isDifferent = trimmed !== defaultPromptText.trim();
+    const promptValue = isDifferent ? trimmed : undefined;
+
+    onUpdateItem(item.id, {
+      customPrompt: promptValue,
+      appliedConfig: {
+        ...(item.appliedConfig || {
+          enableCharacter: item.appliedConfig?.enableCharacter ?? settings.enableCharacter,
+          enableOutfit: item.appliedConfig?.enableOutfit ?? settings.enableOutfit,
+          characterPrompt: appliedCharacter,
+          outfitPrompt: appliedOutfitPrompt,
+        }),
+        customPrompt: promptValue,
+        appliedAt: Date.now(),
+      },
+    });
+
+    setIsSavedToast(true);
+    setTimeout(() => setIsSavedToast(false), 2500);
+  };
+
+  const handleResetToDefaultPrompt = () => {
+    const freshDefault = generateFullPromptText(item, settings, uploadedOutfits, uploadedOutfit);
+    setLocalPrompt(freshDefault);
+    onUpdateItem(item.id, {
+      customPrompt: undefined,
+      appliedConfig: item.appliedConfig ? {
+        ...item.appliedConfig,
+        customPrompt: undefined,
+        appliedAt: Date.now(),
+      } : undefined,
+    });
+
+    setIsSavedToast(true);
+    setTimeout(() => setIsSavedToast(false), 2500);
+  };
 
   // Applied config data for this specific row
   const appliedCharacter = item.appliedConfig?.characterPrompt || settings.characterPrompt;
@@ -374,12 +428,16 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setIsFullPromptModalOpen(true)}
-                  className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 px-2 py-0.5 rounded transition-colors cursor-pointer"
-                  title="Xem toàn bộ prompt AI sẽ gửi đi"
+                  onClick={handleOpenPromptModal}
+                  className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded transition-colors cursor-pointer border ${
+                    isPromptCustomized
+                      ? 'text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-300'
+                      : 'text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border-indigo-200/80'
+                  }`}
+                  title="Xem và chỉnh sửa toàn bộ prompt AI gửi đi cho ảnh này"
                 >
                   <Eye className="w-3 h-3 text-indigo-600" />
-                  <span>Xem prompt đầy đủ</span>
+                  <span>{isPromptCustomized ? 'Prompt đã sửa ✨' : 'Xem & Sửa prompt'}</span>
                 </button>
                 {isConfigApplied ? (
                   <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded">
@@ -724,17 +782,23 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                 );
               })()}
             </div>
-          </div>
 
-          <div className="mt-2 flex items-center justify-between text-[11px] pt-2 border-t border-stone-200/60 shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsFullPromptModalOpen(true)}
-              className="text-stone-500 hover:text-indigo-600 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
-              title="Xem toàn bộ prompt AI sẽ gửi đi"
+            <div className="mt-2 flex items-center justify-between text-[11px] pt-2 border-t border-stone-200/60 shrink-0">
+              <button
+                type="button"
+                onClick={handleOpenPromptModal}
+              className={`font-medium inline-flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors cursor-pointer ${
+                isPromptCustomized
+                  ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200'
+                  : 'text-stone-500 hover:text-indigo-600 hover:bg-stone-50'
+              }`}
+              title="Xem và chỉnh sửa toàn bộ prompt AI gửi đi cho ảnh này"
             >
-              <FileText className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Xem prompt đầy đủ</span>
+              <FileText className={`w-3.5 h-3.5 ${isPromptCustomized ? 'text-amber-600' : 'text-indigo-500'}`} />
+              <span>{isPromptCustomized ? 'Prompt đã sửa thủ công' : 'Xem & Sửa prompt'}</span>
+              {isPromptCustomized && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              )}
             </button>
             <button
               type="button"
@@ -763,6 +827,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
             </button>
           </div>
         </div>
+      </div>
 
         {/* COLUMN 3: New AI Result Image */}
         <div className="flex flex-col bg-stone-50/80 rounded-xl p-3 border border-stone-200/90 h-[430px] sm:h-[460px] justify-between shadow-2xs">
@@ -1142,7 +1207,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
         </div>
       </div>
 
-      {/* Full AI Image Prompt Modal */}
+      {/* Full AI Image Prompt Modal (Editable) */}
       {isFullPromptModalOpen && (
         <div
           id={`full-prompt-modal-${item.id}`}
@@ -1150,7 +1215,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
           onClick={() => setIsFullPromptModalOpen(false)}
         >
           <div
-            className="relative max-w-2xl w-full max-h-[88vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col p-5"
+            className="relative max-w-3xl w-full max-h-[92vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col p-5"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -1165,9 +1230,14 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                     <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
                       Hàng #{index + 1} • {item.name}
                     </span>
+                    {isPromptCustomized && (
+                      <span className="text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
+                        ✨ Đang dùng Prompt tùy chỉnh
+                      </span>
+                    )}
                   </h3>
                   <p className="text-[11px] text-stone-500">
-                    Toàn bộ nội dung lệnh và hướng dẫn inpainting sẽ gửi sang AI để xử lý ảnh này
+                    Toàn bộ nội dung lệnh và hướng dẫn inpainting sẽ gửi sang AI để xử lý ảnh này. Bạn có thể trực tiếp chỉnh sửa bên dưới.
                   </p>
                 </div>
               </div>
@@ -1214,54 +1284,105 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                 </div>
               </div>
 
-              {/* Full Raw Prompt Box */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
+              {/* Full Editable Prompt Box */}
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Nội dung Prompt đầy đủ (Gửi sang GPT-Image-2 / Gemini / AI Engine):</span>
+                    <span>Nội dung Prompt gửi sang AI (Cho phép chỉnh sửa trực tiếp):</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const fullPrompt = generateFullPromptText(item, settings, uploadedOutfits, uploadedOutfit);
-                      navigator.clipboard.writeText(fullPrompt);
-                      setCopiedPrompt(true);
-                      setTimeout(() => setCopiedPrompt(false), 2000);
-                    }}
-                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 transition-colors cursor-pointer"
-                  >
-                    {copiedPrompt ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-600">Đã sao chép!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Sao chép prompt</span>
-                      </>
-                    )}
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleResetToDefaultPrompt}
+                      className="text-xs font-medium text-stone-600 hover:text-stone-900 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-stone-100 hover:bg-stone-200 transition-colors cursor-pointer border border-stone-300"
+                      title="Khôi phục về prompt tự động sinh từ cấu hình hàng"
+                    >
+                      <RotateCcw className="w-3 h-3 text-stone-500" />
+                      <span>Khôi phục mặc định</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(localPrompt);
+                        setCopiedPrompt(true);
+                        setTimeout(() => setCopiedPrompt(false), 2000);
+                      }}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 transition-colors cursor-pointer border border-indigo-200"
+                    >
+                      {copiedPrompt ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="text-emerald-600">Đã sao chép!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Sao chép</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <div className="bg-stone-900 text-stone-100 rounded-xl p-3.5 font-mono text-xs leading-relaxed max-h-[340px] overflow-y-auto whitespace-pre-wrap select-text border border-stone-800 shadow-inner">
-                  {generateFullPromptText(item, settings, uploadedOutfits, uploadedOutfit)}
+
+                <div className="relative">
+                  <textarea
+                    rows={12}
+                    value={localPrompt}
+                    onChange={(e) => setLocalPrompt(e.target.value)}
+                    placeholder="Nhập hoặc chỉnh sửa toàn bộ prompt tạo ảnh tại đây..."
+                    className="w-full bg-stone-900 text-stone-100 rounded-xl p-3.5 font-mono text-xs leading-relaxed focus:ring-2 focus:ring-indigo-500 focus:outline-none border border-stone-800 shadow-inner resize-y select-text"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between text-[11px] text-stone-500 pt-0.5">
+                  <span>
+                    💡 Bạn có thể tự do sửa từ khóa, thêm chi tiết, thay đổi văn bản mô tả bằng tiếng Anh hoặc tiếng Việt.
+                  </span>
+                  <span className="font-mono text-stone-400">
+                    {localPrompt.length} ký tự
+                  </span>
                 </div>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="pt-3 border-t border-stone-200 flex items-center justify-between">
-              <span className="text-[11px] text-stone-400">
-                Prompt được cấu trúc tự động theo các thiết lập của hàng #{index + 1}
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsFullPromptModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-bold hover:bg-stone-800 transition-colors cursor-pointer"
-              >
-                Đóng
-              </button>
+            <div className="pt-3 border-t border-stone-200 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {isSavedToast ? (
+                  <span className="text-xs font-bold text-emerald-600 flex items-center gap-1 animate-in fade-in">
+                    <Check className="w-4 h-4" />
+                    Đã lưu prompt tùy chỉnh thành công!
+                  </span>
+                ) : localPrompt.trim() !== defaultPromptText.trim() ? (
+                  <span className="text-xs font-medium text-amber-700 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Prompt đã được chỉnh sửa (Nhấn "Lưu prompt" để áp dụng)
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-stone-400">
+                    Đang sử dụng prompt mặc định chuẩn
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveCustomPrompt}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Lưu prompt cho ảnh này</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsFullPromptModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-bold hover:bg-stone-800 transition-colors cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
           </div>
         </div>

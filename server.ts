@@ -1356,6 +1356,7 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         preservePose = true,
         stylePreset = "photorealistic",
         aspectRatio = "1:1",
+        customPrompt = "",
         apiKey = "",
         selectedModel = "gemini-3.1-flash-image",
       } = req.body;
@@ -1593,6 +1594,8 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
           `STYLE: ${stylePreset}. Photorealistic master commercial photography, 8k resolution, authentic sharp lighting, ultra-high micro-contrast, no cartoons, no drawings, no extra borders.`,
         ].filter(Boolean).join("\n\n");
 
+        const effectiveGptPrompt = (customPrompt && customPrompt.trim()) ? customPrompt.trim() : promptInstructions;
+
         let generatedImageUrl: string | null = null;
         let lastGptError = "";
         let pngBuffer: Buffer | null = null;
@@ -1644,7 +1647,7 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
           for (const p of productBlobs) {
             formData.append("image", p.blob, p.filename);
           }
-          formData.append("prompt", promptInstructions);
+          formData.append("prompt", effectiveGptPrompt);
           if (gptModel) {
             formData.append("model", gptModel);
           }
@@ -1678,10 +1681,10 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
               })),
             ],
             total_reference_images: 1 + productBlobs.length,
-            prompt_length: `${promptInstructions.length} ký tự`,
+            prompt_length: `${effectiveGptPrompt.length} ký tự`,
           }, null, 2));
           console.log("--- NỘI DUNG PROMPT HOÀN CHỈNH GỬI SANG GPT-IMAGE-2 ---");
-          console.log(promptInstructions);
+          console.log(effectiveGptPrompt);
           console.log("-------------------------------------------------------");
           console.log("=======================================================\n");
 
@@ -1706,7 +1709,7 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
               console.warn("Proxy endpoint only accepts single file, retrying with single image + vision prompt...");
               const singleFormData = new FormData();
               singleFormData.append("image", new Blob([new Uint8Array(mainImageBuffer)], { type: "image/png" }), "image.png");
-              singleFormData.append("prompt", promptInstructions);
+              singleFormData.append("prompt", effectiveGptPrompt);
               if (gptModel) singleFormData.append("model", gptModel);
               singleFormData.append("size", gptSize);
               singleFormData.append("response_format", "b64_json");
@@ -1759,7 +1762,7 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
                   retryFormData.append("image", p.blob, p.filename);
                 }
                 retryFormData.append("mask", new Blob([new Uint8Array(maskBuffer)], { type: "image/png" }), "mask.png");
-                retryFormData.append("prompt", promptInstructions);
+                retryFormData.append("prompt", effectiveGptPrompt);
                 if (gptModel) retryFormData.append("model", gptModel);
                 retryFormData.append("size", gptSize);
                 retryFormData.append("response_format", "b64_json");
@@ -1900,7 +1903,7 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
               })),
             ],
             total_reference_images: 1 + productBlobs.length,
-            prompt: promptInstructions,
+            prompt: effectiveGptPrompt,
           },
           timestamp: new Date().toISOString(),
         };
@@ -1908,7 +1911,7 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         return res.json({
           success: true,
           imageUrl: generatedImageUrl,
-          promptUsed: promptInstructions,
+          promptUsed: effectiveGptPrompt,
           provider: "gpt-image-2",
           modelUsed: gptModel,
           loggedBody,
@@ -2062,8 +2065,10 @@ CRITICAL TASK: Replace the corresponding garment/clothing/apron worn or displaye
         }
       }
 
+      const effectiveGeminiPrompt = (customPrompt && customPrompt.trim()) ? customPrompt.trim() : promptInstructions;
+
       parts.push({
-        text: promptInstructions,
+        text: effectiveGeminiPrompt,
       });
 
       // Valid aspect ratio check (defaults to 9:16)
@@ -2093,7 +2098,7 @@ CRITICAL TASK: Replace the corresponding garment/clothing/apron worn or displaye
         return `Phần ${idx + 1} [Prompt Văn Bản]: ${p.text?.length || 0} ký tự`;
       }));
       console.log("--- NỘI DUNG PROMPT HOÀN CHỈNH GỬI SANG GEMINI ---");
-      console.log(promptInstructions);
+      console.log(effectiveGeminiPrompt);
       console.log("-------------------------------------------------");
       console.log("=======================================================\n");
 
@@ -2219,16 +2224,16 @@ CRITICAL TASK: Replace the corresponding garment/clothing/apron worn or displaye
               approxSize: `~${Math.round((p.data.length * 0.75) / 1024)} KB`,
             })),
           ],
-          promptCharacters: promptInstructions.length,
+          promptCharacters: effectiveGeminiPrompt.length,
         },
-        prompt: promptInstructions,
+        prompt: effectiveGeminiPrompt,
         timestamp: new Date().toISOString(),
       };
 
       res.json({
         success: true,
         imageUrl: formattedImageUrl,
-        promptUsed: promptInstructions,
+        promptUsed: effectiveGeminiPrompt,
         provider: "gemini",
         modelUsed: targetModel,
         loggedBody,

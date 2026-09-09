@@ -442,6 +442,7 @@ export default function App() {
     }
 
     const effectiveApiKey = rawGptKey || rawGeminiKey;
+    const effectiveCustomPrompt = (item.customPrompt || item.appliedConfig?.customPrompt)?.trim();
 
     const requestPayload = {
       provider: providerToUse,
@@ -461,6 +462,7 @@ export default function App() {
       productName: effectiveProductName,
       outfitPrompt: effectiveOutfitPrompt,
       backgroundPrompt: effectiveBackgroundPrompt,
+      customPrompt: effectiveCustomPrompt || undefined,
       removeSubtitles: settings.removeSubtitles,
       preserveBackground: effectivePreserveBackground,
       preservePose: effectivePreservePose,
@@ -499,6 +501,7 @@ export default function App() {
           productName: effectiveProductName,
           outfitPrompt: effectiveOutfitPrompt,
           backgroundPrompt: effectiveBackgroundPrompt,
+          customPrompt: effectiveCustomPrompt || undefined,
           outfitImageBase64: effectiveOutfitImageBase64,
           outfitMimeType: uploadedOutfit?.mimeType || 'image/jpeg',
           removeSubtitles: settings.removeSubtitles,
