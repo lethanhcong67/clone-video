@@ -142,13 +142,52 @@ async function startServer() {
   // Validate API key endpoint for Gemini
   app.post("/api/validate-key", async (req, res) => {
     try {
-      const { apiKey, model = "gemini-3.1-flash-image" } = req.body;
+      const { apiKey, model = "gemini-3.1-flash-image", baseUrl } = req.body;
       const keyToTest = (apiKey && apiKey.trim()) || process.env.GEMINI_API_KEY;
 
       if (!keyToTest) {
         return res.status(400).json({
           valid: false,
           error: "Không tìm thấy khóa API nào để kiểm tra. Vui lòng nhập khóa API của bạn.",
+        });
+      }
+
+      // If key starts with sk- or baseUrl specifies custom endpoint like openlux.ai
+      const effectiveBaseUrl =
+        (baseUrl && baseUrl.trim()) ||
+        (keyToTest.startsWith("sk-")
+          ? "https://api.openlux.ai/v1beta/models/gemini-3.5-flash:generateContent"
+          : "");
+
+      if (
+        effectiveBaseUrl &&
+        (effectiveBaseUrl.includes("openlux.ai") || keyToTest.startsWith("sk-"))
+      ) {
+        const endpoint = resolveVisionEndpoint(effectiveBaseUrl, "gemini", model);
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${keyToTest.trim()}`,
+          "x-goog-api-key": keyToTest.trim(),
+        };
+        const testRes = await fetch(endpoint.url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "Ping" }] }],
+          }),
+        });
+        if (testRes.ok) {
+          return res.json({
+            valid: true,
+            message: `Khóa API hợp lệ! Kết nối thành công tới ${endpoint.url}.`,
+            modelTested: endpoint.model,
+            isCustomKey: Boolean(apiKey && apiKey.trim()),
+          });
+        }
+        const errText = await testRes.text();
+        return res.status(400).json({
+          valid: false,
+          error: `Lỗi kết nối máy chủ (${testRes.status}): ${errText.slice(0, 150)}`,
         });
       }
 

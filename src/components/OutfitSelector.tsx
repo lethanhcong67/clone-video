@@ -8,18 +8,9 @@ import {
   Sparkles,
   CheckCheck,
   Package,
-  Lock,
-  Loader2,
-  Eye,
-  RefreshCw,
   Copy,
-  Sliders,
-  ChevronDown,
-  ChevronUp,
-  KeyRound,
-  Info,
 } from 'lucide-react';
-import { OutfitReference, ProductAnalysis, ApiConfig } from '../types';
+import { OutfitReference, ApiConfig } from '../types';
 import { fileToDataUrl } from '../utils/imageUtils';
 
 interface OutfitSelectorProps {
@@ -45,17 +36,13 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
   onChangePrompt,
   uploadedOutfits,
   onAddUploadedOutfits,
-  onUpdateUploadedOutfit,
   onRemoveUploadedOutfit,
   onClearUploadedOutfits,
   onApplyToAll,
-  apiConfig,
-  onOpenVisionSettings,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedOutfitId, setSelectedOutfitId] = useState<string | null>(null);
-  const [isAnalysisExpanded, setIsAnalysisExpanded] = useState<boolean>(true);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
 
   // Active outfit reference for inspection
@@ -80,91 +67,6 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
     onChangePrompt(getStandardPrompt(productName));
   };
 
-  // Perform AI Vision Analysis on a product reference
-  const runVisionAnalysis = async (outfit: OutfitReference) => {
-    if (!outfit.dataUrl && !outfit.previewUrl) return;
-
-    if (onUpdateUploadedOutfit) {
-      onUpdateUploadedOutfit(outfit.id, { isAnalyzing: true, analysisError: undefined });
-    }
-
-    try {
-      // Determine vision key & provider based on user config
-      const customVisionKey = apiConfig?.visionAnalysis?.apiKey?.trim();
-      const visionProvider = apiConfig?.visionAnalysis?.provider || (apiConfig?.activeProvider === 'gpt-image-2' ? 'openai' : 'gemini');
-      const visionModel = apiConfig?.visionAnalysis?.model || (visionProvider === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini');
-      const fallbackKey =
-        customVisionKey ||
-        (visionProvider === 'gemini'
-          ? apiConfig?.apiKey
-          : apiConfig?.gptImage?.apiKey);
-
-      const customBaseUrl = apiConfig?.visionAnalysis?.baseUrl?.trim() || undefined;
-
-      const res = await fetch('/api/analyze-product', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          dataUrl: outfit.dataUrl || outfit.previewUrl,
-          mimeType: outfit.mimeType || 'image/jpeg',
-          fileName: outfit.name,
-          apiKey: customVisionKey || fallbackKey || undefined,
-          provider: visionProvider,
-          model: visionModel,
-          baseUrl: customBaseUrl,
-        }),
-      });
-
-      let data: any = null;
-      try {
-        const rawText = await res.text();
-        data = rawText ? JSON.parse(rawText) : null;
-      } catch (parseErr) {
-        console.warn('Lỗi đọc dữ liệu JSON từ API phân tích ảnh:', parseErr);
-      }
-
-      if (res.ok && data?.success && data?.analysis) {
-        const analysis: ProductAnalysis = data.analysis;
-
-        if (onUpdateUploadedOutfit) {
-          onUpdateUploadedOutfit(outfit.id, {
-            analysis,
-            isAnalyzing: false,
-            description: `${analysis.productName}: ${analysis.suggestedPrompt}`,
-          });
-        }
-
-        // Auto-update productName if current productName is empty or generic
-        if (analysis.productName && onChangeProductName) {
-          onChangeProductName(analysis.productName);
-        }
-
-        // Auto-update outfitPrompt with rich, analyzed prompt
-        if (analysis.suggestedPrompt) {
-          onChangePrompt(analysis.suggestedPrompt);
-        }
-      } else {
-        const errorMsg = data?.error || data?.message || `Lỗi phản hồi từ máy chủ (HTTP ${res.status})`;
-        if (onUpdateUploadedOutfit) {
-          onUpdateUploadedOutfit(outfit.id, {
-            isAnalyzing: false,
-            analysisError: errorMsg,
-          });
-        }
-      }
-    } catch (err: any) {
-      console.warn('Lỗi khi gọi API phân tích ảnh:', err);
-      if (onUpdateUploadedOutfit) {
-        onUpdateUploadedOutfit(outfit.id, {
-          isAnalyzing: false,
-          analysisError: err?.message || 'Lỗi kết nối phân tích ảnh',
-        });
-      }
-    }
-  };
-
   const processFiles = async (fileList: FileList | File[]) => {
     const validFiles = Array.from(fileList).filter((f) => f.type.startsWith('image/'));
     if (validFiles.length === 0) return;
@@ -183,7 +85,6 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
           mimeType: file.type || 'image/jpeg',
           description: `Sản phẩm tham chiếu ref${refIndex}: ${file.name}`,
           category: 'uploaded',
-          isAnalyzing: true,
         };
         newOutfits.push(newOutfit);
       } catch (e) {
@@ -194,11 +95,6 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
     if (newOutfits.length > 0) {
       onAddUploadedOutfits(newOutfits);
       setSelectedOutfitId(newOutfits[0].id);
-
-      // Trigger vision analysis for each new outfit
-      newOutfits.forEach((outfit) => {
-        runVisionAnalysis(outfit);
-      });
     }
   };
 
@@ -264,18 +160,6 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {onOpenVisionSettings && (
-              <button
-                type="button"
-                onClick={onOpenVisionSettings}
-                className="text-[11px] font-semibold text-amber-700 hover:text-amber-800 hover:bg-amber-50 px-2 py-1 rounded-md transition-colors inline-flex items-center gap-1 border border-amber-200/80 cursor-pointer"
-                title="Cấu hình API Key riêng cho tác vụ phân tích ảnh Vision"
-              >
-                <KeyRound className="w-3 h-3 text-amber-600" />
-                <span>{apiConfig?.visionAnalysis?.apiKey ? 'Khóa Vision riêng ✓' : 'API Key Phân Tích'}</span>
-              </button>
-            )}
-
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -321,7 +205,7 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
                   Kéo thả hoặc <span className="text-emerald-600 underline">chọn ảnh sản phẩm</span>
                 </p>
                 <p className="text-[10.5px] text-stone-500 mt-0.5">
-                  AI sẽ tự động phân tích chi tiết & đưa vào Prompt
+                  Tải ảnh mẫu trang phục hoặc sản phẩm cần thay thế (ref2, ref3...)
                 </p>
               </div>
             ) : (
@@ -349,11 +233,6 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"
                           />
-                          {outfit.isAnalyzing && (
-                            <div className="absolute inset-0 bg-black/50 backdrop-blur-2xs flex items-center justify-center text-white">
-                              <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
-                            </div>
-                          )}
                         </div>
 
                         <div className="max-w-[85px] leading-tight">
@@ -361,12 +240,9 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
                             <span className="text-[10px] font-bold text-emerald-800">
                               Ref {index + 2}
                             </span>
-                            {outfit.analysis && (
-                              <Sparkles className="w-2.5 h-2.5 text-amber-500" title="Đã phân tích AI" />
-                            )}
                           </div>
-                          <span className="text-[10px] text-stone-700 font-medium truncate block" title={outfit.analysis?.productName || outfit.name}>
-                            {outfit.analysis?.productName || outfit.name}
+                          <span className="text-[10px] text-stone-700 font-medium truncate block" title={outfit.name}>
+                            {outfit.name}
                           </span>
                         </div>
 
@@ -407,11 +283,6 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
                   <Package className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Tên sản phẩm thay thế:</span>
                 </label>
-                {productName && (
-                  <span className="text-[10.5px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded">
-                    ✓ Đã nhận diện
-                  </span>
-                )}
               </div>
               <input
                 id="product-name-input"
@@ -462,134 +333,11 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
             </div>
           </div>
         </div>
-
-        {/* AI Vision Analysis Details Card */}
-        {activeOutfit && (
-          <div className="mt-3 rounded-xl border border-amber-200/90 bg-amber-50/40 p-3 text-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 font-bold text-amber-900">
-                <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>
-                  {activeOutfit.isAnalyzing
-                    ? 'AI đang phân tích chi tiết sản phẩm...'
-                    : activeOutfit.analysis
-                    ? '✨ Chi tiết phân tích AI của sản phẩm (Đã nạp vào Prompt)'
-                    : 'Phân tích chi tiết hình ảnh sản phẩm'}
-                </span>
-                {activeOutfit.isAnalyzing && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 ml-1" />
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  disabled={activeOutfit.isAnalyzing}
-                  onClick={() => runVisionAnalysis(activeOutfit)}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-amber-800 hover:text-amber-950 bg-amber-100/80 hover:bg-amber-200/80 border border-amber-300/80 transition-colors cursor-pointer disabled:opacity-50"
-                  title="Chạy lại AI Vision phân tích sản phẩm này"
-                >
-                  <RefreshCw className={`w-3 h-3 ${activeOutfit.isAnalyzing ? 'animate-spin' : ''}`} />
-                  <span>{activeOutfit.isAnalyzing ? 'Đang phân tích...' : 'Phân tích lại AI'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsAnalysisExpanded(!isAnalysisExpanded)}
-                  className="p-1 text-amber-700 hover:text-amber-950 rounded hover:bg-amber-100/60 cursor-pointer"
-                >
-                  {isAnalysisExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Analysis details contents */}
-            {isAnalysisExpanded && (
-              <>
-                {activeOutfit.isAnalyzing ? (
-                  <div className="py-2 flex items-center justify-center gap-2 text-stone-500">
-                    <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
-                    <span className="text-[11.5px]">Đang trích xuất màu sắc, họa tiết thêu/in, chữ viết và chất liệu sản phẩm...</span>
-                  </div>
-                ) : activeOutfit.analysis ? (
-                  <div className="space-y-2 pt-1">
-                    {/* Visual Attributes Chips Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                      <div className="bg-white/90 p-2 rounded-lg border border-amber-200/70 space-y-0.5">
-                        <span className="font-bold text-amber-900 block">🎨 Màu sắc & Phối màu:</span>
-                        <p className="text-stone-700 leading-snug">{activeOutfit.analysis.colors}</p>
-                      </div>
-
-                      <div className="bg-white/90 p-2 rounded-lg border border-amber-200/70 space-y-0.5">
-                        <span className="font-bold text-amber-900 block">🌸 Họa tiết & Hình in:</span>
-                        <p className="text-stone-700 leading-snug">{activeOutfit.analysis.patterns}</p>
-                      </div>
-
-                      <div className="bg-white/90 p-2 rounded-lg border border-amber-200/70 space-y-0.5">
-                        <span className="font-bold text-amber-900 block">🔤 Chữ viết & Typography:</span>
-                        <p className="text-stone-700 leading-snug">{activeOutfit.analysis.textOrTypography || 'Không có chữ viết'}</p>
-                      </div>
-
-                      <div className="bg-white/90 p-2 rounded-lg border border-amber-200/70 space-y-0.5">
-                        <span className="font-bold text-amber-900 block">🧵 Chất liệu & Chi tiết cấu trúc:</span>
-                        <p className="text-stone-700 leading-snug">
-                          {activeOutfit.analysis.materials} • {activeOutfit.analysis.keyFeatures}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Quick action bar */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-200/60 text-[11px]">
-                      <span className="text-amber-800 font-medium">
-                        ✓ Các đặc tính trên đã được tự động tối ưu vào Prompt để tạo ảnh chính xác nhất.
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (activeOutfit.analysis?.suggestedPrompt) {
-                            onChangePrompt(activeOutfit.analysis.suggestedPrompt);
-                          }
-                        }}
-                        className="font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded border border-emerald-300 transition-colors inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <Sparkles className="w-3 h-3 text-emerald-600" />
-                        <span>Nạp lại Prompt này</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : activeOutfit.analysisError ? (
-                  <div className="p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-[11px] flex items-center justify-between">
-                    <span>Lỗi phân tích: {activeOutfit.analysisError}</span>
-                    <button
-                      type="button"
-                      onClick={() => runVisionAnalysis(activeOutfit)}
-                      className="underline font-bold text-rose-900 hover:text-rose-950 ml-2"
-                    >
-                      Thử lại
-                    </button>
-                  </div>
-                ) : (
-                  <div className="p-2 text-stone-500 text-[11px] flex items-center justify-between">
-                    <span>Chưa phân tích chi tiết sản phẩm này.</span>
-                    <button
-                      type="button"
-                      onClick={() => runVisionAnalysis(activeOutfit)}
-                      className="font-bold text-amber-800 hover:underline"
-                    >
-                      Bấm để phân tích ngay bằng AI
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {uploadedOutfits.length > 0 && onApplyToAll && (
         <div className="pt-2 mt-2 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-500">
-          <span>AI sẽ truyền tải chính xác từng hoa văn, chất liệu & màu sắc vào ảnh gốc</span>
+          <span>AI sẽ truyền tải chính xác từng chi tiết theo ảnh tham chiếu vào ảnh gốc</span>
           <button
             type="button"
             onClick={onApplyToAll}
@@ -603,3 +351,4 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
     </div>
   );
 };
+

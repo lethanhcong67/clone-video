@@ -25,13 +25,13 @@ import { createSampleBatchItem, generateFallbackResultImage } from './utils/samp
 const API_STORAGE_KEY = 'ai_image_api_config_v2';
 
 const DEFAULT_GPT_CONFIG: GptImageConfig = {
-  apiKey: '',
+  apiKey: 'sk-2YrQt4dMCkJQCBR439Hq1rlvCtONjFfEvFu7MGrW4rledtzM',
   baseUrl: 'https://api.openlux.ai/v1/images/edits',
   model: 'gpt-image-2',
   size: '1152x2048',
   quality: 'medium',
   isCustomKeyActive: true,
-  isValidated: false,
+  isValidated: true,
 };
 
 export const DEFAULT_KLING_NEGATIVE_PROMPT = '';
@@ -40,7 +40,7 @@ export const DEFAULT_KLING_PROMPT =
   'Người mẫu cử động tự nhiên, giữ cố định thiết kế sản phẩm và họa tiết trang phục, ánh sáng điện ảnh cao cấp, 4K';
 
 const DEFAULT_KLING_CONFIG: KlingVideoConfig = {
-  apiKey: '',
+  apiKey: 'sk-FKuIim2pal8dLHVXBJqig9AmgFbX8m0VM09XtUbfBdqAyI95',
   baseUrl: 'https://api.openlux.ai/kling/v1/videos/image2video',
   model: 'kling-v2-6',
   mode: 'pro',
@@ -50,9 +50,10 @@ const DEFAULT_KLING_CONFIG: KlingVideoConfig = {
   cfgScale: 0.6,
   negativePrompt: '',
   watermarkEnabled: false,
-  isCustomKeyActive: false,
-  isValidated: false,
+  isCustomKeyActive: true,
+  isValidated: true,
 };
+
 
 export const DEFAULT_VISION_CONFIG: VisionAnalysisConfig = {
   apiKey: 'sk-Zaijv0dEfEBxf2nc07glM0MFT464YajjKJceAb9nQ2r9BrTY',
@@ -82,23 +83,23 @@ function loadSavedApiConfig(): ApiConfig {
 
       return {
         activeProvider: parsed.activeProvider || 'gpt-image-2',
-        apiKey: parsed.apiKey || '',
+        apiKey: parsed.apiKey || 'sk-Zaijv0dEfEBxf2nc07glM0MFT464YajjKJceAb9nQ2r9BrTY',
         model: parsed.model || 'gemini-3.1-flash-image',
-        isCustomKeyActive: Boolean(parsed.isCustomKeyActive && parsed.apiKey),
-        isValidated: Boolean(parsed.isValidated),
+        isCustomKeyActive: Boolean(parsed.isCustomKeyActive ?? true),
+        isValidated: Boolean(parsed.isValidated ?? true),
         lastValidatedAt: parsed.lastValidatedAt,
         gptImage: {
-          apiKey: parsed.gptImage?.apiKey || '',
+          apiKey: parsed.gptImage?.apiKey || DEFAULT_GPT_CONFIG.apiKey,
           baseUrl: effectiveBaseUrl,
           model: parsed.gptImage?.model || 'gpt-image-2',
           size: parsed.gptImage?.size || '1152x2048',
           quality: parsed.gptImage?.quality === 'standard' ? 'medium' : (parsed.gptImage?.quality || 'medium'),
-          isCustomKeyActive: Boolean(parsed.gptImage?.apiKey),
-          isValidated: Boolean(parsed.gptImage?.isValidated),
+          isCustomKeyActive: Boolean(parsed.gptImage?.apiKey || DEFAULT_GPT_CONFIG.apiKey),
+          isValidated: parsed.gptImage?.isValidated !== undefined ? Boolean(parsed.gptImage?.isValidated) : DEFAULT_GPT_CONFIG.isValidated,
           lastValidatedAt: parsed.gptImage?.lastValidatedAt,
         },
         kling: {
-          apiKey: parsed.kling?.apiKey || '',
+          apiKey: parsed.kling?.apiKey || DEFAULT_KLING_CONFIG.apiKey,
           accessKey: parsed.kling?.accessKey,
           secretKey: parsed.kling?.secretKey,
           baseUrl: effectiveKlingBaseUrl,
@@ -113,8 +114,12 @@ function loadSavedApiConfig(): ApiConfig {
               ? parsed.kling.negativePrompt
               : '',
           watermarkEnabled: parsed.kling?.watermarkEnabled !== undefined ? parsed.kling.watermarkEnabled : false,
-          isCustomKeyActive: Boolean(parsed.kling?.apiKey || (parsed.kling?.accessKey && parsed.kling?.secretKey)),
-          isValidated: Boolean(parsed.kling?.isValidated),
+          isCustomKeyActive: Boolean(
+            parsed.kling?.apiKey ||
+            DEFAULT_KLING_CONFIG.apiKey ||
+            (parsed.kling?.accessKey && parsed.kling?.secretKey)
+          ),
+          isValidated: parsed.kling?.isValidated !== undefined ? Boolean(parsed.kling?.isValidated) : DEFAULT_KLING_CONFIG.isValidated,
           lastValidatedAt: parsed.kling?.lastValidatedAt,
         },
         visionAnalysis: {
@@ -133,14 +138,15 @@ function loadSavedApiConfig(): ApiConfig {
   }
   return {
     activeProvider: 'gpt-image-2',
-    apiKey: '',
+    apiKey: 'sk-Zaijv0dEfEBxf2nc07glM0MFT464YajjKJceAb9nQ2r9BrTY',
     model: 'gemini-3.1-flash-image',
-    isCustomKeyActive: false,
-    isValidated: false,
+    isCustomKeyActive: true,
+    isValidated: true,
     gptImage: DEFAULT_GPT_CONFIG,
     kling: DEFAULT_KLING_CONFIG,
     visionAnalysis: DEFAULT_VISION_CONFIG,
   };
+
 }
 
 export default function App() {
@@ -170,7 +176,7 @@ export default function App() {
   // API Config state with local storage persistence
   const [apiConfig, setApiConfig] = useState<ApiConfig>(loadSavedApiConfig);
   const [isApiModalOpen, setIsApiModalOpen] = useState(false);
-  const [apiModalTab, setApiModalTab] = useState<'gemini' | 'gpt-image-2' | 'kling' | 'vision'>('vision');
+  const [apiModalTab, setApiModalTab] = useState<'gemini' | 'gpt-image-2' | 'kling'>('gpt-image-2');
 
   // Settings
   const [settings, setSettings] = useState<BatchSettings>({
@@ -844,11 +850,8 @@ export default function App() {
           uploadedOutfit={uploadedOutfit}
           onApplyToAll={handleApplyToAll}
           apiConfig={apiConfig}
-          onOpenVisionSettings={() => {
-            setApiModalTab('vision');
-            setIsApiModalOpen(true);
-          }}
         />
+
 
         {/* Action Banner: Apply Character & Outfit/Product replacement to ALL images */}
         <ApplyToAllBanner
