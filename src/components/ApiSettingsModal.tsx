@@ -103,6 +103,40 @@ export const AVAILABLE_KLING_MODELS: ImageModelOption[] = [
   },
 ];
 
+export const AVAILABLE_VISION_MODELS: ImageModelOption[] = [
+  {
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash Vision (OpenLux)',
+    badge: 'Mặc định & Nhanh nhất',
+    description: 'Phân tích đa phương thái cực nhanh, bóc tách chính xác từng chi tiết sợi vải, hoa văn thêu, logo, chữ viết và chất liệu.',
+    isRecommended: true,
+  },
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash Vision',
+    badge: 'Khuyên dùng',
+    description: 'Phân tích chi tiết từng sợi vải, hoa văn thêu, logo, chữ viết và chất liệu sản phẩm với tốc độ cực nhanh.',
+  },
+  {
+    id: 'gemini-1.5-flash',
+    name: 'Gemini 1.5 Flash Vision',
+    badge: 'Ổn định',
+    description: 'Phiên bản chuẩn ổn định cao, tối ưu hạn ngạch token cho việc phân tích sản phẩm.',
+  },
+  {
+    id: 'gpt-4o-mini',
+    name: 'OpenAI GPT-4o Mini Vision',
+    badge: 'OpenAI / OpenLux',
+    description: 'Nhận diện thị giác thông minh từ OpenAI, trích xuất cấu trúc và hoa văn sản phẩm sắc nét.',
+  },
+  {
+    id: 'gpt-4o',
+    name: 'OpenAI GPT-4o Vision Pro',
+    badge: 'Chi tiết tối đa',
+    description: 'Mô hình thị giác cao cấp nhất: Đọc hiểu văn bản nhỏ, hoa văn tinh xảo và chất liệu chi tiết.',
+  },
+];
+
 interface ApiSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -111,7 +145,7 @@ interface ApiSettingsModalProps {
   systemHasKey: boolean;
   systemHasOpenAiKey?: boolean;
   systemHasKlingKey?: boolean;
-  initialTab?: 'gemini' | 'gpt-image-2' | 'kling';
+  initialTab?: 'gemini' | 'gpt-image-2' | 'kling' | 'vision';
 }
 
 export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
@@ -124,8 +158,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
   systemHasKlingKey = false,
   initialTab,
 }) => {
-  // Modal active tab: 'gemini' | 'gpt-image-2' | 'kling'
-  const [activeTab, setActiveTab] = useState<'gemini' | 'gpt-image-2' | 'kling'>(
+  // Modal active tab: 'gemini' | 'gpt-image-2' | 'kling' | 'vision'
+  const [activeTab, setActiveTab] = useState<'gemini' | 'gpt-image-2' | 'kling' | 'vision'>(
     initialTab || (config.activeProvider === 'gpt-image-2' ? 'gpt-image-2' : 'gemini')
   );
 
@@ -137,6 +171,20 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
   const [selectedGeminiModel, setSelectedGeminiModel] = useState(config.model || 'gemini-3.1-flash-image');
   const [useCustomGeminiKey, setUseCustomGeminiKey] = useState(config.isCustomKeyActive);
   const [showGeminiKey, setShowGeminiKey] = useState(false);
+
+  // Vision Analysis Key state (Separate Key specifically for image analysis)
+  const [visionKey, setVisionKey] = useState(config.visionAnalysis?.apiKey || 'sk-Zaijv0dEfEBxf2nc07glM0MFT464YajjKJceAb9nQ2r9BrTY');
+  const [visionProvider, setVisionProvider] = useState<'gemini' | 'openai' | 'openlux'>(
+    config.visionAnalysis?.provider || 'gemini'
+  );
+  const [visionModel, setVisionModel] = useState(config.visionAnalysis?.model || 'gemini-3.5-flash');
+  const [visionBaseUrl, setVisionBaseUrl] = useState(config.visionAnalysis?.baseUrl || 'https://api.openlux.ai/v1beta/models/gemini-3.5-flash:generateContent');
+  const [showVisionKey, setShowVisionKey] = useState(false);
+  const [isTestingVision, setIsTestingVision] = useState(false);
+  const [visionTestResult, setVisionTestResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
 
   // GPT-Image-2 state
   const [gptKey, setGptKey] = useState(config.gptImage?.apiKey || 'sk-2YrQt4dMCkJQCBR439Hq1rlvCtONjFfEvFu7MGrW4rledtzM');
@@ -419,6 +467,73 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
     }
   };
 
+  // Test Vision AI Key
+  const handleTestVisionKey = async () => {
+    const rawKey = visionKey.trim();
+    if (!rawKey && !systemHasKey && !systemHasOpenAiKey) {
+      setVisionTestResult({
+        success: false,
+        message: 'Vui lòng nhập API Key cho Vision AI trước khi kiểm tra.',
+      });
+      return;
+    }
+
+    setIsTestingVision(true);
+    setVisionTestResult(null);
+
+    try {
+      const res = await fetch('/api/validate-vision-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: rawKey || undefined,
+          provider: visionProvider,
+          model: visionModel,
+          baseUrl: visionBaseUrl.trim() || undefined,
+        }),
+      });
+
+      let data: any = null;
+      try {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : null;
+      } catch (e) {
+        console.warn('Lỗi parse JSON kiểm tra vision:', e);
+      }
+
+      if (res.ok && data?.valid) {
+        setVisionTestResult({
+          success: true,
+          message: data.message || 'Khóa API Vision hợp lệ! Kết nối thành công.',
+        });
+      } else {
+        setVisionTestResult({
+          success: false,
+          message: data?.error || data?.message || `Khóa API Vision không hợp lệ (HTTP ${res.status}).`,
+        });
+      }
+    } catch (err: any) {
+      setVisionTestResult({
+        success: false,
+        message: err?.message || 'Không thể kết nối đến máy chủ kiểm tra API Vision.',
+      });
+    } finally {
+      setIsTestingVision(false);
+    }
+  };
+
+  const handlePasteVision = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setVisionKey(text.trim());
+        setVisionTestResult(null);
+      }
+    } catch (e) {
+      console.warn('Không thể đọc clipboard:', e);
+    }
+  };
+
   const handleSave = () => {
     const isCustomGeminiActive = Boolean(geminiKey.trim() && useCustomGeminiKey);
     const updatedGptConfig: GptImageConfig = {
@@ -453,6 +568,16 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
       lastValidatedAt: klingTestResult?.success ? new Date().toISOString() : config.kling?.lastValidatedAt,
     };
 
+    const updatedVisionConfig = {
+      apiKey: visionKey.trim(),
+      provider: visionProvider,
+      model: visionModel,
+      baseUrl: visionBaseUrl.trim() || 'https://api.openlux.ai/v1',
+      isCustomKeyActive: Boolean(visionKey.trim()),
+      isValidated: visionTestResult?.success ?? config.visionAnalysis?.isValidated ?? false,
+      lastValidatedAt: visionTestResult?.success ? new Date().toISOString() : config.visionAnalysis?.lastValidatedAt,
+    };
+
     onSaveConfig({
       activeProvider,
       apiKey: geminiKey.trim(),
@@ -462,6 +587,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
       lastValidatedAt: geminiTestResult?.success ? new Date().toISOString() : config.lastValidatedAt,
       gptImage: updatedGptConfig,
       kling: updatedKlingConfig,
+      visionAnalysis: updatedVisionConfig,
     });
     onClose();
   };
@@ -499,8 +625,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
           </div>
         </div>
 
-        {/* Provider Switch Tabs */}
-        <div className="grid grid-cols-3 gap-1 mb-3 p-1 bg-stone-100 rounded-xl border border-stone-200 shrink-0">
+        {/* Provider Switch Tabs - 4 Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 mb-3 p-1 bg-stone-100 rounded-xl border border-stone-200 shrink-0">
           <button
             type="button"
             id="tab-gemini-provider"
@@ -552,6 +678,22 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
             <span className="truncate">Kling Video</span>
             {Boolean(klingKey.trim() || systemHasKlingKey) && (
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            id="tab-vision-analysis-provider"
+            onClick={() => setActiveTab('vision')}
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'vision'
+                ? 'bg-white text-amber-700 shadow-xs border border-stone-200'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
+              }`}
+          >
+            <Eye className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span className="truncate">Phân tích ảnh</span>
+            {Boolean(visionKey.trim()) && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
             )}
           </button>
         </div>
@@ -1366,6 +1508,246 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               )}
             </div>
           )}
+
+          {/* TAB 4: VISION ANALYSIS (PHÂN TÍCH HÌNH ẢNH SẢN PHẨM) - GIAO DIỆN TỐI GIẢN */}
+          {activeTab === 'vision' && (
+            <div className="space-y-3">
+              {/* Provider Selection */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Dịch vụ AI Vision:</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVisionProvider('gemini');
+                      setVisionModel('gemini-2.5-flash');
+                      if (visionBaseUrl.includes('openai.com') || visionBaseUrl.includes('openlux.ai')) {
+                        setVisionBaseUrl('https://generativelanguage.googleapis.com');
+                      }
+                    }}
+                    className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-between transition-all cursor-pointer ${
+                      visionProvider === 'gemini'
+                        ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-2xs'
+                        : 'border-stone-200 hover:border-stone-300 bg-white text-stone-700'
+                    }`}
+                  >
+                    <span>Google Gemini</span>
+                    {visionProvider === 'gemini' && (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVisionProvider('openai');
+                      setVisionModel('gpt-4o-mini');
+                      if (visionBaseUrl.includes('googleapis.com')) {
+                        setVisionBaseUrl('https://api.openlux.ai/v1');
+                      }
+                    }}
+                    className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-between transition-all cursor-pointer ${
+                      visionProvider === 'openai' || visionProvider === 'openlux'
+                        ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-2xs'
+                        : 'border-stone-200 hover:border-stone-300 bg-white text-stone-700'
+                    }`}
+                  >
+                    <span>OpenAI / OpenLux Vision</span>
+                    {(visionProvider === 'openai' || visionProvider === 'openlux') && (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* API Key Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="custom-vision-key-input" className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Khóa API:</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handlePasteVision}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 hover:text-amber-800 transition-colors cursor-pointer"
+                    >
+                      <ClipboardPaste className="w-3 h-3" />
+                      Dán nhanh
+                    </button>
+                    {visionKey && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisionKey('');
+                          setVisionTestResult(null);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-400 hover:text-rose-600 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Xóa
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <input
+                    id="custom-vision-key-input"
+                    type={showVisionKey ? 'text' : 'password'}
+                    value={visionKey}
+                    onChange={(e) => {
+                      setVisionKey(e.target.value);
+                      setVisionTestResult(null);
+                    }}
+                    placeholder={
+                      visionProvider === 'gemini'
+                        ? 'Nhập Gemini API Key riêng (VD: AIzaSy...)'
+                        : 'Nhập OpenAI / OpenLux API Key (VD: sk-...)'
+                    }
+                    className="w-full pl-3 pr-10 py-2 rounded-xl border border-stone-300 text-xs font-mono text-stone-900 placeholder:text-stone-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-hidden transition-all bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowVisionKey(!showVisionKey)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                    title={showVisionKey ? 'Ẩn khóa' : 'Hiện khóa'}
+                  >
+                    {showVisionKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Base URL Endpoint */}
+              <div className="space-y-1.5">
+                <label htmlFor="vision-base-url-input" className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Đường dẫn URL API (Base URL / Endpoint):</span>
+                </label>
+                <input
+                  id="vision-base-url-input"
+                  type="text"
+                  value={visionBaseUrl}
+                  onChange={(e) => setVisionBaseUrl(e.target.value)}
+                  placeholder={
+                    visionProvider === 'gemini'
+                      ? 'https://generativelanguage.googleapis.com'
+                      : 'https://api.openlux.ai/v1'
+                  }
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 text-xs font-mono text-stone-800 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-hidden bg-white"
+                />
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                  <span className="text-stone-400">Mẫu:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVisionProvider('gemini');
+                      setVisionBaseUrl('https://generativelanguage.googleapis.com');
+                    }}
+                    className={`px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                      visionBaseUrl === 'https://generativelanguage.googleapis.com'
+                        ? 'bg-amber-100 border-amber-400 text-amber-900 font-bold'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    Google Gemini
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVisionProvider('gemini');
+                      setVisionModel('gemini-3.5-flash');
+                      setVisionBaseUrl('https://api.openlux.ai/v1beta/models/gemini-3.5-flash:generateContent');
+                    }}
+                    className={`px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                      visionBaseUrl.includes('openlux.ai') && (visionBaseUrl.includes('gemini') || visionBaseUrl.includes(':generateContent'))
+                        ? 'bg-amber-100 border-amber-400 text-amber-900 font-bold'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    OpenLux Gemini 3.5 Flash
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVisionProvider('openai');
+                      setVisionBaseUrl('https://api.openlux.ai/v1');
+                    }}
+                    className={`px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                      visionBaseUrl === 'https://api.openlux.ai/v1'
+                        ? 'bg-amber-100 border-amber-400 text-amber-900 font-bold'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    OpenLux AI (/v1)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVisionProvider('openai');
+                      setVisionBaseUrl('https://api.openai.com/v1');
+                    }}
+                    className={`px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                      visionBaseUrl === 'https://api.openai.com/v1'
+                        ? 'bg-amber-100 border-amber-400 text-amber-900 font-bold'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    OpenAI (/v1)
+                  </button>
+                </div>
+              </div>
+
+              {/* Test Button */}
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <button
+                  id="test-vision-key-btn"
+                  type="button"
+                  disabled={isTestingVision}
+                  onClick={handleTestVisionKey}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-xs font-bold text-amber-900 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {isTestingVision ? (
+                    <Loader2 className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                  ) : (
+                    <Eye className="w-3.5 h-3.5 text-amber-600" />
+                  )}
+                  <span>{isTestingVision ? 'Đang kiểm tra...' : 'Kiểm tra kết nối Vision AI'}</span>
+                </button>
+
+                <span className="text-[11px] text-stone-400">
+                  {visionKey ? 'Khóa riêng đã nhập' : 'Dùng khóa hệ thống'}
+                </span>
+              </div>
+
+              {/* Test Feedback */}
+              {visionTestResult && (
+                <div
+                  id="test-vision-feedback"
+                  className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${visionTestResult.success
+                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                      : 'bg-rose-50 border border-rose-200 text-rose-800'
+                    }`}
+                >
+                  {visionTestResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="leading-tight">
+                    <p className="font-bold">{visionTestResult.success ? 'Kết nối thành công!' : 'Kiểm tra thất bại'}</p>
+                    <p className="text-[11px] mt-0.5">{visionTestResult.message}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -1373,7 +1755,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-stone-600 hover:bg-stone-100 transition-colors"
+            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer"
           >
             Đóng
           </button>
@@ -1381,18 +1763,22 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
             id="save-api-config-btn"
             type="button"
             onClick={handleSave}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-all active:scale-95 ${activeTab === 'kling'
-                ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-200'
-                : activeProvider === 'gpt-image-2'
-                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
-                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-all active:scale-95 cursor-pointer ${activeTab === 'vision'
+                ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-200'
+                : activeTab === 'kling'
+                  ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-200'
+                  : activeProvider === 'gpt-image-2'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                    : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
               }`}
           >
-            {activeTab === 'kling'
-              ? 'Lưu cấu hình Kling AI Video'
-              : activeProvider === 'gpt-image-2'
-                ? 'Lưu và Sử dụng GPT-Image-2'
-                : 'Lưu và Sử dụng Gemini'}
+            {activeTab === 'vision'
+              ? 'Lưu cấu hình Phân tích ảnh'
+              : activeTab === 'kling'
+                ? 'Lưu cấu hình Kling AI Video'
+                : activeProvider === 'gpt-image-2'
+                  ? 'Lưu và Sử dụng GPT-Image-2'
+                  : 'Lưu và Sử dụng Gemini'}
           </button>
         </div>
       </div>

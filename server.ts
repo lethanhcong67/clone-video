@@ -248,6 +248,485 @@ async function startServer() {
     }
   });
 
+const DEFAULT_VISION_KEY = process.env.VISION_API_KEY || process.env.GEMINI_API_KEY || "sk-Zaijv0dEfEBxf2nc07glM0MFT464YajjKJceAb9nQ2r9BrTY";
+const DEFAULT_VISION_URL = process.env.VISION_API_URL || "https://api.openlux.ai/v1beta/models/gemini-3.5-flash:generateContent";
+const DEFAULT_VISION_MODEL = "gemini-3.5-flash";
+
+// Helper to resolve Vision API Endpoint for all formats (Gemini REST / OpenAI / OpenLux)
+function resolveVisionEndpoint(rawBaseUrl?: string, provider = "gemini", model = DEFAULT_VISION_MODEL) {
+  const clean = (rawBaseUrl || (provider === "gemini" ? DEFAULT_VISION_URL : "")).trim().replace(/\/+$/, "");
+
+  // If user passed a full Gemini generateContent endpoint (e.g., https://api.openlux.ai/v1beta/models/gemini-3.5-flash:generateContent)
+  if (clean.includes(":generateContent")) {
+    const extractedModel = clean.split("/models/")[1]?.split(":")[0] || model || DEFAULT_VISION_MODEL;
+    return { type: "gemini-rest" as const, url: clean, model: extractedModel };
+  }
+
+  // If user passed a URL containing /models/ without :generateContent
+  if (clean.includes("/models/")) {
+    const extractedModel = clean.split("/models/")[1]?.split("/")[0] || model || DEFAULT_VISION_MODEL;
+    return { type: "gemini-rest" as const, url: `${clean}:generateContent`, model: extractedModel };
+  }
+
+  // If user passed an OpenAI chat completion endpoint
+  if (clean.includes("/chat/completions")) {
+    return { type: "openai-rest" as const, url: clean, model: model || "gpt-4o-mini" };
+  }
+
+  // If provider is explicitly openai / openlux or URL ends with /v1
+  if (provider === "openai" || provider === "openlux" || (clean.endsWith("/v1") && !clean.includes("v1beta"))) {
+    const base = clean || "https://api.openlux.ai/v1";
+    return { type: "openai-rest" as const, url: `${base}/chat/completions`, model: model || "gpt-4o-mini" };
+  }
+
+  // Default Gemini REST endpoint
+  const geminiBase = clean ? clean.replace(/\/v1beta$/, "") : "https://api.openlux.ai";
+  const effectiveModel = model || DEFAULT_VISION_MODEL;
+  return {
+    type: "gemini-rest" as const,
+    url: `${geminiBase}/v1beta/models/${effectiveModel}:generateContent`,
+    model: effectiveModel,
+  };
+}
+
+// Execute Vision Analysis with multi-format REST support
+async function executeVisionAnalysis(params: {
+  base64Data: string;
+  mimeType: string;
+  prompt: string;
+  apiKey?: string;
+  baseUrl?: string;
+  provider?: string;
+  model?: string;
+}) {
+  const { base64Data, mimeType, prompt, apiKey, baseUrl, provider, model } = params;
+  const endpoint = resolveVisionEndpoint(baseUrl, provider, model);
+
+  if (endpoint.type === "gemini-rest") {
+    let targetUrl = endpoint.url;
+    if (apiKey && !targetUrl.includes("key=") && targetUrl.includes("googleapis.com")) {
+      targetUrl += (targetUrl.includes("?") ? "&" : "?") + `key=${encodeURIComponent(apiKey)}`;
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "User-Agent": "aistudio-build",
+    };
+    if (apiKey) {
+      headers["x-goog-api-key"] = apiKey;
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
+    const requestBody = {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType || "image/jpeg",
+                data: base64Data,
+              },
+            },
+            {
+              text: prompt,
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.2,
+      },
+    };
+
+    const res = await fetch(targetUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+
+    const resText = await res.text();
+    let resJson: any = null;
+    try {
+      resJson = resText ? JSON.parse(resText) : null;
+    } catch (_) {}
+
+    if (!res.ok) {
+      const errMsg =
+        resJson?.error?.message ||
+        resJson?.message ||
+        `Lỗi HTTP ${res.status} từ máy chủ Vision AI (${resText.slice(0, 180)})`;
+      throw new Error(errMsg);
+    }
+
+    const textOutput = resJson?.candidates?.[0]?.content?.parts
+      ?.map((p: any) => p.text || "")
+      .join("")
+      .trim();
+
+    if (!textOutput) {
+      throw new Error("Dịch vụ Vision AI không trả về nội dung phân tích.");
+    }
+
+    return {
+      text: textOutput,
+      engine: `Gemini REST (${endpoint.model})`,
+    };
+  } else {
+    // OpenAI REST
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
+    const requestBody = {
+      model: endpoint.model || "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            {
+              type: "image_url",
+              image_url: { url: `data:${mimeType || "image/jpeg"};base64,${base64Data}` },
+            },
+          ],
+        },
+      ],
+      max_tokens: 1200,
+      temperature: 0.2,
+    };
+
+    const res = await fetch(endpoint.url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+
+    const resText = await res.text();
+    let resJson: any = null;
+    try {
+      resJson = resText ? JSON.parse(resText) : null;
+    } catch (_) {}
+
+    if (!res.ok) {
+      const errMsg =
+        resJson?.error?.message ||
+        resJson?.message ||
+        `Lỗi HTTP ${res.status} từ OpenAI/OpenLux Vision (${resText.slice(0, 180)})`;
+      throw new Error(errMsg);
+    }
+
+    const textOutput = resJson?.choices?.[0]?.message?.content?.trim();
+    if (!textOutput) {
+      throw new Error("Dịch vụ OpenAI/OpenLux Vision không trả về nội dung.");
+    }
+
+    return {
+      text: textOutput,
+      engine: `OpenAI REST (${endpoint.model})`,
+    };
+  }
+}
+
+  // Validate API key endpoint for Vision Analysis (Gemini / OpenAI Vision)
+  app.post("/api/validate-vision-key", async (req, res) => {
+    try {
+      const { apiKey, provider = "gemini", model = DEFAULT_VISION_MODEL, baseUrl } = req.body;
+      const keyToTest = (apiKey && apiKey.trim()) || (provider === "gemini" ? DEFAULT_VISION_KEY : process.env.OPENAI_API_KEY);
+
+      if (!keyToTest) {
+        return res.status(400).json({
+          valid: false,
+          error: "Chưa nhập khóa API cho Vision AI. Vui lòng nhập API Key để kiểm tra.",
+        });
+      }
+
+      const endpoint = resolveVisionEndpoint(baseUrl, provider, model);
+
+      if (endpoint.type === "gemini-rest") {
+        let targetUrl = endpoint.url;
+        if (keyToTest && !targetUrl.includes("key=") && targetUrl.includes("googleapis.com")) {
+          targetUrl += (targetUrl.includes("?") ? "&" : "?") + `key=${encodeURIComponent(keyToTest)}`;
+        }
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "User-Agent": "aistudio-build",
+        };
+        headers["x-goog-api-key"] = keyToTest;
+        headers["Authorization"] = `Bearer ${keyToTest}`;
+
+        const pingBody = {
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: "Ping. Respond with OK." }],
+            },
+          ],
+        };
+
+        const response = await fetch(targetUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(pingBody),
+        });
+
+        const resText = await response.text();
+        let resJson: any = null;
+        try {
+          resJson = resText ? JSON.parse(resText) : null;
+        } catch (_) {}
+
+        if (response.ok) {
+          return res.json({
+            valid: true,
+            message: `Khóa API Vision hợp lệ! Kết nối thành công tới ${targetUrl}.`,
+            modelTested: endpoint.model,
+            provider: "gemini",
+            endpoint: targetUrl,
+            isCustomKey: Boolean(apiKey && apiKey.trim()),
+          });
+        }
+
+        const errMsg = resJson?.error?.message || resJson?.message || `HTTP ${response.status}: ${resText.slice(0, 150)}`;
+        return res.status(400).json({
+          valid: false,
+          error: `Không thể xác thực khóa Vision API (${errMsg}).`,
+        });
+      } else {
+        // OpenAI / OpenLux vision test
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${keyToTest}`,
+        };
+
+        const pingBody = {
+          model: endpoint.model || "gpt-4o-mini",
+          messages: [{ role: "user", content: "Ping. Respond with OK." }],
+          max_tokens: 10,
+        };
+
+        const response = await fetch(endpoint.url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(pingBody),
+        });
+
+        const resText = await response.text();
+        let resJson: any = null;
+        try {
+          resJson = resText ? JSON.parse(resText) : null;
+        } catch (_) {}
+
+        if (response.ok) {
+          return res.json({
+            valid: true,
+            message: `Khóa API Vision hợp lệ! Kết nối thành công tới ${endpoint.url}.`,
+            modelTested: endpoint.model,
+            provider: "openai",
+            endpoint: endpoint.url,
+            isCustomKey: Boolean(apiKey && apiKey.trim()),
+          });
+        }
+
+        const errMsg = resJson?.error?.message || resJson?.message || `HTTP ${response.status}: ${resText.slice(0, 150)}`;
+        return res.status(400).json({
+          valid: false,
+          error: `Không thể xác thực khóa Vision API (${errMsg}).`,
+        });
+      }
+    } catch (err: any) {
+      console.warn("Lỗi kiểm tra API key Vision:", err?.message || err);
+      return res.status(400).json({
+        valid: false,
+        error: err?.message || "Khóa API không hợp lệ hoặc không thể kết nối đến URL API.",
+      });
+    }
+  });
+
+  // Dedicated Product Vision Analysis Endpoint
+  app.post("/api/analyze-product", async (req, res) => {
+    try {
+      const {
+        image,
+        dataUrl,
+        mimeType = "image/jpeg",
+        fileName = "",
+        apiKey,
+        provider,
+        model,
+        baseUrl,
+      } = req.body;
+
+      const rawImage = image || dataUrl;
+      if (!rawImage) {
+        return res.status(400).json({
+          success: false,
+          error: "Thiếu dữ liệu hình ảnh sản phẩm để phân tích (image data is required).",
+        });
+      }
+
+      // Extract base64 and clean mimeType
+      let base64Data = rawImage;
+      let cleanMimeType = mimeType;
+      if (typeof rawImage === "string" && rawImage.startsWith("data:")) {
+        const match = rawImage.match(/^data:([^;]+);base64,(.+)$/);
+        if (match) {
+          cleanMimeType = match[1] || mimeType;
+          base64Data = match[2];
+        } else {
+          const commaIdx = rawImage.indexOf(",");
+          if (commaIdx !== -1) {
+            base64Data = rawImage.slice(commaIdx + 1);
+          }
+        }
+      }
+
+      console.log(`\n🔍 [AI VISION INSPECTOR] Đang phân tích chi tiết sản phẩm: "${fileName || "product"}" (${cleanMimeType}) [URL: ${baseUrl || "Default"}]...`);
+
+      const visionPrompt = `You are a world-class AI Vision & Commercial Product Inspector specialized in high-precision product inpainting, microscopic textile analysis, and zero-loss detail preservation.
+Analyze the provided product image in extreme detail and return a single valid JSON object strictly matching this schema:
+{
+  "productName": "Concise, specific Vietnamese name of the product (e.g., 'Tạp dề hoa văn Mexico thêu thủ công', 'Váy dạ hội lụa satin đỏ cổ chữ V', 'Đồng hồ nam dây da nâu chronograph', 'Áo sơ mi oxford trắng', 'Vòng tay đính đá ngọc bích')",
+  "category": "Vietnamese category name (e.g., 'Tạp dề', 'Áo', 'Váy / Đầm', 'Quần', 'Trang sức & Phụ kiện', 'Đồng hồ', 'Túi xách', 'Giày dép', 'Đồ trang trí')",
+  "colors": "Detailed color palette in Vietnamese describing base color and all secondary/accent colors (e.g., 'Nền vải be kem mộc mạc, hoa văn phối màu đỏ ruby, vàng mù tạt, xanh ngọc bích và xanh lá')",
+  "patterns": "Exhaustive description of artwork, illustrations, embroidery, graphic prints, logos, geometric motifs in Vietnamese with focus on micro-patterns, fine borders, and symmetrical details",
+  "textOrTypography": "All visible text, brand names, phrases, typography, or embroidery letters exactly as written on the product with exact uppercase/lowercase spelling (or 'Không có chữ viết' if none)",
+  "materials": "Fabric texture, finish, and material in Vietnamese (e.g., 'Vải canvas cotton dày dặn, da bò sáp, kim loại mạ vàng bóng, hạt đá cẩm thạch')",
+  "keyFeatures": "Specific structural and micro-structural elements in Vietnamese (e.g., 'Quai đeo cổ có nấc cài đồng, dây buộc eo bản vừa, 1 túi lớn may phía trước bụng, đường chỉ may đôi, viền bo chỉ nổi')",
+  "suggestedPrompt": "A comprehensive, surgical inpainting prompt in Vietnamese instructing the AI to replace the old product in ref1 with this exact product ref2, preserving 1:1 micro-details, hard edge borders, exact text spelling, and realistic material textures while removing all old details (e.g., 'Thay thế chính xác 100% sản phẩm theo ảnh tham chiếu ref2 với từng chi tiết vi mô, hoa văn thêu thủ công sắc nét, chữ in chính xác, viền chỉ may nổi, xóa sạch toàn bộ sản phẩm cũ trên ảnh gốc ref1, giữ nguyên phông nền và người mẫu')",
+  "englishPrompt": "Professional master-level inpainting prompt in English detailing the replacement of the item with this exact product, enforcing 1:1 micro-detail retention, vector-grade typography, hard edge contours, authentic textile weave, and zero blur artifacts"
+}
+
+IMPORTANT RULES:
+1. Provide accurate, vivid, and micro-detailed descriptions based strictly on the image.
+2. If there are words, names, or typography on the product, capture the exact spelling and font style in 'textOrTypography' and enforce them in 'suggestedPrompt'.
+3. Detail all small intricate patterns, border seams, and micro-embroidery so the inpainting model preserves them without blurring.
+4. Output ONLY the raw JSON object, without markdown wraps, backticks or commentary.`;
+
+      let parsedAnalysis: any = null;
+      let usedEngine = "";
+
+      const customKey = apiKey && apiKey.trim();
+      const effectiveKey = customKey || DEFAULT_VISION_KEY || process.env.OPENAI_API_KEY;
+
+      // 1. Execute Vision analysis using specified endpoint
+      try {
+        const result = await executeVisionAnalysis({
+          base64Data,
+          mimeType: cleanMimeType,
+          prompt: visionPrompt,
+          apiKey: effectiveKey,
+          baseUrl: baseUrl || (provider === "gemini" ? DEFAULT_VISION_URL : undefined),
+          provider: provider || "gemini",
+          model: model || DEFAULT_VISION_MODEL,
+        });
+
+        if (result?.text) {
+          const rawOutput = result.text.trim();
+          const cleanJson = rawOutput
+            .replace(/^```json\s*/i, "")
+            .replace(/^```\s*/i, "")
+            .replace(/```$/i, "")
+            .trim();
+
+          try {
+            parsedAnalysis = JSON.parse(cleanJson);
+          } catch (jsonErr) {
+            const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              parsedAnalysis = JSON.parse(jsonMatch[0]);
+            }
+          }
+          usedEngine = result.engine;
+        }
+      } catch (visionErr: any) {
+        console.warn("⚠️ Lỗi phân tích từ endpoint chính:", visionErr?.message || visionErr);
+
+        // Backup to default Vision endpoint if available
+        if (!parsedAnalysis && DEFAULT_VISION_KEY && effectiveKey !== DEFAULT_VISION_KEY) {
+          try {
+            const backupRes = await executeVisionAnalysis({
+              base64Data,
+              mimeType: cleanMimeType,
+              prompt: visionPrompt,
+              apiKey: DEFAULT_VISION_KEY,
+              baseUrl: DEFAULT_VISION_URL,
+              provider: "gemini",
+              model: DEFAULT_VISION_MODEL,
+            });
+            if (backupRes?.text) {
+              const cleanJson = backupRes.text
+                .replace(/^```json\s*/i, "")
+                .replace(/^```\s*/i, "")
+                .replace(/```$/i, "")
+                .trim();
+              parsedAnalysis = JSON.parse(cleanJson);
+              usedEngine = `Backup Vision (${DEFAULT_VISION_MODEL})`;
+            }
+          } catch (backupErr: any) {
+            console.warn("⚠️ Lỗi backup Vision:", backupErr?.message || backupErr);
+          }
+        }
+      }
+
+      // 2. Heuristic rule-based fallback if all AI services were unreachable
+      if (!parsedAnalysis) {
+        const fname = (fileName || "").toLowerCase();
+        let fallbackName = "Sản phẩm tham chiếu";
+        let fallbackCat = "Trang phục / Phụ kiện";
+        if (fname.includes("apron") || fname.includes("tap") || fname.includes("bep")) {
+          fallbackName = "Tạp dề phong cách thủ công";
+          fallbackCat = "Tạp dề";
+        } else if (fname.includes("shirt") || fname.includes("ao")) {
+          fallbackName = "Áo thời trang";
+          fallbackCat = "Áo";
+        } else if (fname.includes("dress") || fname.includes("dam") || fname.includes("vay")) {
+          fallbackName = "Váy đầm thời trang";
+          fallbackCat = "Váy / Đầm";
+        } else if (fname.includes("watch") || fname.includes("dongho")) {
+          fallbackName = "Đồng hồ cao cấp";
+          fallbackCat = "Đồng hồ";
+        } else if (fname.includes("bracelet") || fname.includes("vong") || fname.includes("lac")) {
+          fallbackName = "Vòng tay phụ kiện";
+          fallbackCat = "Trang sức";
+        }
+
+        parsedAnalysis = {
+          productName: fallbackName,
+          category: fallbackCat,
+          colors: "Màu sắc chi tiết theo ảnh tham chiếu ref2",
+          patterns: "Họa tiết và chi tiết trang trí nguyên bản từ ảnh tham chiếu ref2",
+          textOrTypography: "Không có chữ viết",
+          materials: "Chất liệu cao cấp tự nhiên",
+          keyFeatures: "Đường nét và cấu trúc hoàn chỉnh như ảnh mẫu ref2",
+          suggestedPrompt: `Thay thế chính xác ${fallbackName} theo ảnh tham chiếu ref2 vào hình gốc ref1, xóa toàn bộ chi tiết cũ, giữ nguyên phông nền và người mẫu`,
+          englishPrompt: `Surgically replace the item in ref1 with the exact product in ref2 (${fallbackName}), preserving scene composition and model pose.`,
+        };
+        usedEngine = "Heuristic rule-based fallback";
+      }
+
+      parsedAnalysis.analyzedAt = Date.now();
+
+      console.log(`✅ [AI VISION INSPECTOR THÀNH CÔNG (${usedEngine})]:`, parsedAnalysis.productName);
+
+      return res.json({
+        success: true,
+        engine: usedEngine,
+        analysis: parsedAnalysis,
+      });
+    } catch (err: any) {
+      console.error("Lỗi nghiêm trọng trong /api/analyze-product:", err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || "Đã xảy ra lỗi khi phân tích hình ảnh sản phẩm.",
+      });
+    }
+  });
+
   // Validate API key endpoint for Kling AI Video
   app.post("/api/validate-kling-key", async (req, res) => {
     try {
@@ -578,10 +1057,8 @@ async function startServer() {
       additions.push("a modern stylish outerwear jacket");
     }
 
-    // Removal of old text/embroidery/patterns
-    if (pLower.includes("xóa") || pLower.includes("loại bỏ") || pLower.includes("thay thế")) {
-      additions.push("completely erase all old text, names, embroidery, and conflicting patterns from the original image item");
-    }
+    // Micro-detail & Anti-blur directives
+    additions.push("faithfully preserving all micro-patterns, fine embroidery stitches, border seams, authentic fabric texture, and crisp vector-like typography from the reference without blur or distortion");
 
     if (additions.length > 0) {
       return `${p} (Directives: ${additions.join("; ")})`;
@@ -633,18 +1110,19 @@ async function startServer() {
             },
           })),
           {
-            text: `You are an expert AI vision analyst for image editing and product replacement.
+            text: `You are an expert AI vision analyst for image editing, microscopic textile analysis, and zero-loss product replacement.
 Input images:
 - Image 1: The ground-truth base photo.
 - Image 2${productRefs.length > 1 ? ` to Image ${productRefs.length + 1}` : ""}: Target product reference(s) to replace into Image 1.
 
-Analyze both images carefully and provide 3 concise bullet points in English:
-1. TARGET PRODUCT DETAILS: Specifically describe the product in Image 2 (e.g., apron, shirt, bag, bracelet, or product; its exact pattern, artwork, illustrations, colors, typography, and straps).
-2. SOURCE ITEM IN IMAGE 1 TO REPLACE: Identify the corresponding item in Image 1 that must be replaced (e.g., 'the Mexican floral embroidered apron with text VALENTINA/SOFIA'). Explicitly state that all old text, names, and embroidery on this item in Image 1 MUST BE COMPLETELY ERASED.
-3. INPAINTING DIRECTIVE: Clearly state how to render the product from Image 2 into Image 1 (e.g., replace the apron in Image 1 with Image 2's apron; ${enableCharacter && characterPrompt ? `the newly modified character (${characterPrompt}) must be wearing this new product` : "maintain the exact same position/hanging display without adding people"}).
+Analyze both images carefully and provide 4 concise bullet points in English:
+1. TARGET PRODUCT & MICRO-DETAILS: Specifically describe the product in Image 2 (exact colors, intricate micro-patterns, embroidery threads, tiny illustrations, typography/text with exact spelling, stitches, borders, straps, and fabric weave).
+2. SOURCE ITEM IN IMAGE 1 TO REPLACE: Identify the corresponding item in Image 1 that must be replaced. Explicitly state that ALL old text, names, graphics, and embroidery on this item in Image 1 MUST BE 100% COMPLETELY ERASED with zero residual.
+3. PRESERVATION OF SMALL DETAILS: Explicitly instruct to render all micro-motifs, fine borders, and lettering from Image 2 with razor-sharp vector clarity, preventing any blur, smoothing, or distortion.
+4. INPAINTING DIRECTIVE: Clearly state how to render the product from Image 2 into Image 1 (${enableCharacter && characterPrompt ? `the newly modified character (${characterPrompt}) must be wearing this new product` : "maintain the exact same position/hanging display without adding people"}).
 ${outfitPrompt ? `User request notes: "${outfitPrompt}"` : ""}
 
-Keep your output concise and directly actionable for an inpainting model.`,
+Keep your output concise, precise, and directly actionable for an inpainting model.`,
           },
         ];
 
@@ -998,27 +1476,24 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
 
         const primaryOutfitMandate = enableOutfit
           ? (enableCharacter
-              ? `CRITICAL MANDATORY TASK - COMPLETE OUTFIT & PRODUCT SWAP (HIGHEST PRIORITY):
-- Both Image 1 (original photo) and Image 2 (product reference) are provided as direct visual references.
+              ? `CRITICAL MANDATORY TASK - 100% PRODUCT VISUAL CLONE (HIGHEST PRIORITY):
+- Both Image 1 (original scene photo) and Image 2 (replacement product reference) are provided directly as visual references.
 - YOUR PRIMARY OBJECTIVE: The person in the final photo MUST BE WEARING the exact product shown in Image 2!
-- Target Product Description:
-${resolvedOutfitDesc}
+- DO NOT describe, re-interpret, or invent any design details. Look directly at reference Image 2 and copy 100% of its visual design, prints, graphics, colors, and structure directly onto the person.
 - SURGICAL REPLACEMENT:
-  * Locate the corresponding garment, clothing, or apron in Image 1.
-  * COMPLETELY ERASE and REMOVE this original garment and ALL of its text, names (such as 'SOFIA' or 'VALENTINA'), embroidery, and conflicting artwork from Image 1.
-  * Render the person WEARING the replacement product from Image 2 (ref2).
-  * Transfer ALL visual features of Image 2: the exact floral prints/graphics, colors, typography, fabric texture, neck straps, and waist ties.
+  * Locate the corresponding worn garment/item in Image 1.
+  * COMPLETELY ERASE and REMOVE this original item and ALL of its text, embroidery, and conflicting artwork from Image 1.
+  * Render the person WEARING the exact replacement product from Image 2 (ref2) with 100% photographic identity.
   * HIGHEST PRIORITY: DO NOT KEEP THE OLD CLOTHING FROM IMAGE 1! The subject MUST be wearing the product from Image 2!`
-              : `CRITICAL MANDATE - EXACT PRODUCT REPLACEMENT ONLY (NO CHARACTER ALTERATION / NO NEW PERSON):
-- Both Image 1 (original photo) and Image 2 (product reference) are provided as visual references.
+              : `CRITICAL MANDATE - 100% PRODUCT REPLACEMENT CLONE (NO CHARACTER ALTERATION / NO NEW PERSON):
+- Both Image 1 (original photo) and Image 2 (product reference) are provided directly as visual references.
 - YOUR PRIMARY OBJECTIVE: Replace the corresponding item in Image 1 with the exact product shown in Image 2.
-- Target Product Description:
-${resolvedOutfitDesc}
-- SURGICAL REPLACEMENT: Identify the item in Image 1 (apron, shirt, bag, or displayed product). COMPLETELY ERASE all old text, names ('SOFIA', 'VALENTINA'), embroidery, and old patterns from this item in Image 1!
-- Render the replacement product matching the exact artwork, print pattern, and colors from Image 2.
+- DO NOT describe, re-interpret, or invent any design details. Copy 100% of the visual design directly from Image 2.
+- SURGICAL REPLACEMENT: Identify the item in Image 1. COMPLETELY ERASE all old text, embroidery, and old patterns from this item in Image 1!
+- Render the replacement product matching 100% of the exact artwork, print pattern, and colors directly from Image 2.
 - STRICT RULE: DO NOT add, invent, or introduce any new person, model, human character, or face.
-- If the original photo has a person: Keep their exact face, facial features, hair, identity, body, and pose 100% UNCHANGED. Only replace the clothing/apron they are wearing.
-- If the original photo does NOT have a person (e.g. an apron hanging on a wall hook, product on a table, flat lay): DO NOT generate or add any human model! Simply replace the hanging or displayed item in place on the wall/hook/table in the exact same format and background.`)
+- If the original photo has a person: Keep their exact face, facial features, hair, identity, body, and pose 100% UNCHANGED. Only replace the clothing they are wearing.
+- If the original photo does NOT have a person: Simply replace the hanging or displayed item in place with the exact product from Image 2 in the same format and background.`)
           : "PRESERVE ORIGINAL CLOTHING: Keep existing garments and worn accessories completely unchanged.";
 
         const characterRequirement = enableCharacter
@@ -1046,6 +1521,17 @@ ${resolvedOutfitDesc}
 - Only inpaint the new background around the subject, integrating realistic contact shadows, depth-of-field, and ambient lighting seamlessly.`
           : (preserveBackground ? "BACKGROUND PRESERVATION: Keep the exact background environment, room lighting, depth-of-field, and cinematic atmosphere identical to Image 1." : "");
 
+        const productDesignLockMandate = `ABSOLUTE 1:1 PRODUCT DESIGN CLONE MANDATE (ZERO DEVIATION / NO REDESIGN):
+- EXACT DESIGN IDENTITY: The replacement product in the new image MUST be an UNMODIFIED 1:1 VISUAL CLONE of the exact product design from Image 2.
+- STRICT PROHIBITION OF CREATIVE ALTERATIONS: DO NOT redesign, DO NOT invent new patterns, DO NOT shift colors, DO NOT alter graphic placements, and DO NOT modify logos/text from Image 2.
+- 100% REPLICATION: Every floral motif, geometric line, border stitch, strap, pocket, button, and typographic element from Image 2 must appear in the final image with photographic identity, accurately draped over the subject's pose in Image 1.`;
+
+        const microDetailDirectives = `MICRO-DETAIL & TEXTURE FIDELITY MANDATE (1:1 ZERO-LOSS RESOLUTION):
+- 1:1 REPLICATION OF SMALL INTRICATE DETAILS: Faithfully preserve all micro-patterns, fine embroidery stitches, delicate border seams, miniature floral/geometric artwork, clasps, buttons, and exact graphic prints from Image 2.
+- HARD EDGE CONTOURS & SHARP LOCAL CONTRAST: Do NOT blur, do NOT smooth out, and do NOT blend away tiny motifs. Every small design element from Image 2 must remain crisp, clearly delineated, and recognizable.
+- AUTHENTIC TEXTILE GRAIN: Render authentic tactile surface texture (woven canvas threads, leather texture/sheen, metallic luster, silk weave) without plastic or muddy smoothing.
+- STRICT PROHIBITION: Absolutely NO blurry patches, NO smeared textures, NO melted small designs, and NO loss of fine lines on the target product.`;
+
         const typographyDirectives = `TYPOGRAPHY & GRAPHIC DETAIL MANDATE (ULTRA-SHARP VECTOR CLARITY):
 - REPLICATE ALL TEXT & NAMES WITH VECTOR-GRADE CLARITY: Every word, title, name, letter, and decorative typography on the replacement product (Image 2) must be rendered with razor-sharp pixel edges, exact spelling, clean distinct font shapes, and zero blur.
 - PERFECT FONT ALIGNMENT & CONTRAST: Preserve the distinct colorful typography, font weights, and spacing from Image 2 seamlessly integrated into the cloth texture without bleeding, smearing, or distortion.
@@ -1057,13 +1543,15 @@ ${resolvedOutfitDesc}
           `- Image 1: Ground-truth base photo (${hasBgChange ? "exact subject location, character position, product placement" : "scene composition, camera angle, lighting, background"}).`,
           "- Image 2: Target product/outfit reference to replace onto the subject in Image 1.",
           primaryOutfitMandate,
+          productDesignLockMandate,
+          microDetailDirectives,
           typographyDirectives,
           characterRequirement,
           preservePose ? "Strictly maintain the exact same body posture, gestures, and camera angle from the source image." : "",
           backgroundDirective,
           removeSubtitles ? "SUBTITLE REMOVAL: Cleanly erase any movie subtitles, captions, watermarks, or text overlays." : "",
           framingInstruction,
-          `STYLE: ${stylePreset}. Photorealistic master photography, 8k resolution, authentic lighting, no cartoons, no drawings, no extra borders.`,
+          `STYLE: ${stylePreset}. Photorealistic master commercial photography, 8k resolution, authentic sharp lighting, ultra-high micro-contrast, no cartoons, no drawings, no extra borders.`,
         ].filter(Boolean).join("\n\n");
 
         let generatedImageUrl: string | null = null;
@@ -1422,32 +1910,39 @@ ${resolvedOutfitDesc}
       ].join("\n");
 
       const promptInstructions = [
-        "TASK: High-Precision Image-to-Image Photographic Editing and Product Inpainting.",
+        "TASK: High-Precision Image-to-Image Multi-Reference Product Inpainting & Editing.",
         "ARCHITECTURE - MULTIPLE INPUT IMAGES IN STRICT ORDER: [Image 1, Image 2, ...]",
         referenceIndexMap,
-        visionSummary ? `\nAI VISION DIRECTIVE & SPECIFIC DETAILS:\n${visionSummary}` : "",
         "\nCORE MANDATE:",
-        "- ref1 (Image 1) luôn là hình gốc (ground-truth canvas). Giữ nguyên bố cục, bối cảnh, ánh sáng, các chi tiết xung quanh từ ref1.",
-        "- ref2, ref3, ... là các hình ảnh sản phẩm cần thay thế và đặt/mặc vào hình gốc ref1.",
+        "- ref1 (Image 1) is the ground-truth base photograph. Preserve the composition, room scene, ambient lighting, and model pose from ref1.",
+        "- ref2, ref3, ... are the exact target product visual references to place/wear into ref1.",
         "\nCRITICAL RULES FOR SURGICAL REPLACEMENT (HIGHEST PRIORITY):",
         enableOutfit && normalizedProductRefs.length > 0
-          ? `1. TARGET PRODUCT REPLACEMENT (SURGICAL INPAINTING):
-   - Identify the corresponding clothing, apron, garment, or product displayed or worn in Image 1.
-   - YOU MUST COMPLETELY REMOVE and ERASE this existing item from Image 1, including all of its original artwork, colors, patterns, and text (such as embroidery, names like 'SOFIA' or 'VALENTINA', floral illustrations, or graphics).
+          ? `1. TARGET PRODUCT 100% VISUAL CLONE (SURGICAL INPAINTING):
+   - Locate the corresponding clothing, garment, or displayed product in Image 1.
+   - YOU MUST COMPLETELY REMOVE and ERASE this existing item from Image 1, including all of its original artwork, colors, patterns, and text (zero residual).
    - In its place, render the EXACT replacement product shown in Image 2 (ref2).
-   - Transfer ALL visual attributes of Image 2 (ref2) onto the replaced item:
-     * The exact fabric print and graphic pattern from Image 2
-     * The exact color palette, illustrations, and typography from Image 2
-     * The exact straps, waist ties, borders, and pocket details from Image 2
-     * Natural cloth drapery, realistic folds, shadows, and lighting consistent with the scene in Image 1.
-   - ZERO RESIDUAL: Do NOT leave any trace of the old item's pattern, embroidery, or text from Image 1!
+   - DO NOT describe, interpret, or invent any design details. Copy 100% of the visual design, prints, graphics, colors, and structure directly from reference Image 2.
+   - Drape and map the product naturally over the subject/scene from Image 1 with 100% photographic identity.
    ${enableCharacter
-     ? "- CRITICAL DUAL MODIFICATION: The newly modified character MUST be visibly wearing this replacement product from Image 2 (ref2)! DO NOT keep the old apron or clothing from Image 1 on her!"
-     : "- STRICT RULE: Seamlessly replace or place these exact products into ref1 WITHOUT adding or altering any person or human model. If ref1 has a person, keep their exact face, identity, hair, skin, and body 100% UNCHANGED, only replacing their outfit or placing the accessory naturally. If ref1 does NOT have a person (e.g. an apron hanging on a wall hook or displayed on a rack), DO NOT add any person or character at all - simply replace the hanging/displayed item in place on the hook/wall!"}
-   ${outfitPrompt ? `- User instruction notes: "${outfitPrompt}"` : ""}`
+     ? "- CRITICAL DUAL MODIFICATION: The newly modified character MUST be visibly wearing this replacement product from Image 2 (ref2)! DO NOT keep the old clothing from Image 1 on her!"
+     : "- STRICT RULE: Seamlessly replace or place these exact products into ref1 WITHOUT adding or altering any person or human model. If ref1 has a person, keep their exact face, identity, hair, skin, and body 100% UNCHANGED, only replacing their outfit or placing the accessory naturally. If ref1 does NOT have a person, DO NOT add any person - simply replace the displayed item in place!"}`
           : (enableOutfit && outfitPrompt ? `1. TARGET PRODUCT / OUTFIT REPLACEMENT: Replace garment or accessories with: "${outfitPrompt}". ${!enableCharacter ? 'DO NOT add any person or character.' : ''}` : "1. OUTFIT & PRODUCTS: Keep all original clothing, garments, and worn jewelry completely unchanged."),
         enableOutfit && normalizedProductRefs.length > 0
-          ? `2. TYPOGRAPHY & GRAPHIC DETAIL MANDATE (ULTRA-SHARP VECTOR CLARITY):
+          ? `2. ABSOLUTE 1:1 PRODUCT DESIGN CLONE MANDATE (ZERO DEVIATION / NO REDESIGN):
+   - EXACT DESIGN IDENTITY: The replacement product in the new image MUST be an UNMODIFIED 1:1 VISUAL CLONE of the exact product design from Image 2.
+   - STRICT PROHIBITION OF CREATIVE ALTERATIONS: DO NOT redesign, DO NOT invent new patterns, DO NOT shift colors, DO NOT alter graphic placements, and DO NOT modify logos/text from Image 2.
+   - 100% REPLICATION: Every floral motif, geometric line, border stitch, strap, pocket, button, and typographic element from Image 2 must appear in the final image with photographic identity, accurately draped over the subject's pose in Image 1.`
+          : "",
+        enableOutfit && normalizedProductRefs.length > 0
+          ? `3. MICRO-DETAIL & TEXTURE FIDELITY MANDATE (1:1 ZERO-LOSS RESOLUTION):
+   - 1:1 REPLICATION OF SMALL INTRICATE DETAILS: Faithfully preserve all micro-patterns, fine embroidery stitches, delicate border seams, miniature floral/geometric artwork, clasps, buttons, and exact graphic prints from Image 2.
+   - HARD EDGE CONTOURS & SHARP LOCAL CONTRAST: Do NOT blur, do NOT smooth out, and do NOT blend away tiny motifs. Every small design element from Image 2 must remain crisp, clearly delineated, and recognizable.
+   - AUTHENTIC TEXTILE GRAIN: Render authentic tactile surface texture (woven canvas threads, leather texture/sheen, metallic luster, silk weave) without plastic or muddy smoothing.
+   - STRICT PROHIBITION: Absolutely NO blurry patches, NO smeared textures, NO melted small designs, and NO loss of fine lines on the target product.`
+          : "",
+        enableOutfit && normalizedProductRefs.length > 0
+          ? `4. TYPOGRAPHY & GRAPHIC DETAIL MANDATE (ULTRA-SHARP VECTOR CLARITY):
    - REPLICATE ALL TEXT & NAMES WITH VECTOR-GRADE CLARITY: Every word, title, name, letter, and decorative typography on the replacement product (Image 2) must be rendered with razor-sharp pixel edges, exact spelling, clean distinct font shapes, and zero blur.
    - PERFECT FONT ALIGNMENT & CONTRAST: Preserve the distinct colorful typography, font weights, and spacing from Image 2 seamlessly integrated into the cloth texture without bleeding, smearing, or distortion.
    - STRICT PROHIBITION OF TYPOGRAPHIC ARTIFACTS: Absolutely NO blurry text, NO smudged lettering, NO distorted or melting font shapes, NO scrambled pseudo-characters, NO hallucinated duplicate names, and NO low-resolution artifacts.`

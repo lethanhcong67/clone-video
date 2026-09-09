@@ -18,7 +18,7 @@ import { ApiSettingsModal } from './components/ApiSettingsModal';
 import { ApiStatusBanner } from './components/ApiStatusBanner';
 import { ApiLogModal } from './components/ApiLogModal';
 import { VideoSceneExtractor } from './components/VideoSceneExtractor';
-import { BatchImageItem, BatchSettings, OutfitReference, ApiConfig, AppliedReplacementConfig, GptImageConfig, KlingVideoConfig } from './types';
+import { BatchImageItem, BatchSettings, OutfitReference, ApiConfig, AppliedReplacementConfig, GptImageConfig, KlingVideoConfig, VisionAnalysisConfig } from './types';
 import { downloadAllAsZip } from './utils/imageUtils';
 import { createSampleBatchItem, generateFallbackResultImage } from './utils/sampleGenerator';
 
@@ -52,6 +52,15 @@ const DEFAULT_KLING_CONFIG: KlingVideoConfig = {
   watermarkEnabled: false,
   isCustomKeyActive: false,
   isValidated: false,
+};
+
+export const DEFAULT_VISION_CONFIG: VisionAnalysisConfig = {
+  apiKey: 'sk-Zaijv0dEfEBxf2nc07glM0MFT464YajjKJceAb9nQ2r9BrTY',
+  provider: 'gemini',
+  model: 'gemini-3.5-flash',
+  baseUrl: 'https://api.openlux.ai/v1beta/models/gemini-3.5-flash:generateContent',
+  isCustomKeyActive: true,
+  isValidated: true,
 };
 
 function loadSavedApiConfig(): ApiConfig {
@@ -108,6 +117,15 @@ function loadSavedApiConfig(): ApiConfig {
           isValidated: Boolean(parsed.kling?.isValidated),
           lastValidatedAt: parsed.kling?.lastValidatedAt,
         },
+        visionAnalysis: {
+          apiKey: parsed.visionAnalysis?.apiKey || DEFAULT_VISION_CONFIG.apiKey,
+          provider: parsed.visionAnalysis?.provider || DEFAULT_VISION_CONFIG.provider,
+          model: parsed.visionAnalysis?.model || DEFAULT_VISION_CONFIG.model,
+          baseUrl: parsed.visionAnalysis?.baseUrl || DEFAULT_VISION_CONFIG.baseUrl,
+          isCustomKeyActive: Boolean(parsed.visionAnalysis?.apiKey || DEFAULT_VISION_CONFIG.apiKey),
+          isValidated: parsed.visionAnalysis?.isValidated !== undefined ? Boolean(parsed.visionAnalysis?.isValidated) : DEFAULT_VISION_CONFIG.isValidated,
+          lastValidatedAt: parsed.visionAnalysis?.lastValidatedAt,
+        },
       };
     }
   } catch (e) {
@@ -121,6 +139,7 @@ function loadSavedApiConfig(): ApiConfig {
     isValidated: false,
     gptImage: DEFAULT_GPT_CONFIG,
     kling: DEFAULT_KLING_CONFIG,
+    visionAnalysis: DEFAULT_VISION_CONFIG,
   };
 }
 
@@ -134,6 +153,12 @@ export default function App() {
     setUploadedOutfits((prev) => [...prev, ...newOutfits]);
   };
 
+  const handleUpdateUploadedOutfit = (id: string, updates: Partial<OutfitReference>) => {
+    setUploadedOutfits((prev) =>
+      prev.map((o) => (o.id === id ? { ...o, ...updates } : o))
+    );
+  };
+
   const handleRemoveUploadedOutfit = (id: string) => {
     setUploadedOutfits((prev) => prev.filter((o) => o.id !== id));
   };
@@ -145,6 +170,7 @@ export default function App() {
   // API Config state with local storage persistence
   const [apiConfig, setApiConfig] = useState<ApiConfig>(loadSavedApiConfig);
   const [isApiModalOpen, setIsApiModalOpen] = useState(false);
+  const [apiModalTab, setApiModalTab] = useState<'gemini' | 'gpt-image-2' | 'kling' | 'vision'>('vision');
 
   // Settings
   const [settings, setSettings] = useState<BatchSettings>({
@@ -173,7 +199,6 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState(false);
   const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
   const [hasKlingKey, setHasKlingKey] = useState(false);
-  const [apiModalTab, setApiModalTab] = useState<'gemini' | 'gpt-image-2' | 'kling'>('gpt-image-2');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [latestApiLog, setLatestApiLog] = useState<any>(null);
@@ -813,10 +838,16 @@ export default function App() {
           }
           uploadedOutfits={uploadedOutfits}
           onAddUploadedOutfits={handleAddUploadedOutfits}
+          onUpdateUploadedOutfit={handleUpdateUploadedOutfit}
           onRemoveUploadedOutfit={handleRemoveUploadedOutfit}
           onClearUploadedOutfits={handleClearUploadedOutfits}
           uploadedOutfit={uploadedOutfit}
           onApplyToAll={handleApplyToAll}
+          apiConfig={apiConfig}
+          onOpenVisionSettings={() => {
+            setApiModalTab('vision');
+            setIsApiModalOpen(true);
+          }}
         />
 
         {/* Action Banner: Apply Character & Outfit/Product replacement to ALL images */}

@@ -70,6 +70,19 @@ export interface BatchImageItem {
   };
 }
 
+export interface ProductAnalysis {
+  productName: string; // Tên sản phẩm tiếng Việt
+  category: string; // Loại sản phẩm
+  colors: string; // Màu sắc chủ đạo & phối màu
+  patterns: string; // Họa tiết, hoa văn, hình in
+  textOrTypography?: string; // Chữ viết, typography trên sản phẩm (nếu có)
+  materials: string; // Chất liệu, bề mặt
+  keyFeatures: string; // Chi tiết nổi bật (quai đeo, cúc áo, viền...)
+  suggestedPrompt: string; // Prompt tiếng Việt chi tiết đề xuất
+  englishPrompt?: string; // Prompt tiếng Anh chi tiết
+  analyzedAt?: number;
+}
+
 export interface OutfitReference {
   id: string;
   name: string;
@@ -78,6 +91,9 @@ export interface OutfitReference {
   mimeType?: string;
   description: string;
   category: 'uploaded' | 'preset';
+  analysis?: ProductAnalysis;
+  isAnalyzing?: boolean;
+  analysisError?: string;
 }
 
 export interface CharacterPreset {
@@ -121,6 +137,16 @@ export interface BatchSettings {
 
 export type ApiProviderType = 'gemini' | 'gpt-image-2';
 
+export interface VisionAnalysisConfig {
+  apiKey: string;
+  provider: 'gemini' | 'openai' | 'openlux';
+  model: string;
+  baseUrl?: string;
+  isCustomKeyActive: boolean;
+  isValidated: boolean;
+  lastValidatedAt?: string;
+}
+
 export interface GptImageConfig {
   apiKey: string;
   baseUrl: string;
@@ -162,6 +188,8 @@ export interface ApiConfig {
   gptImage?: GptImageConfig;
   // Kling AI Video settings
   kling?: KlingVideoConfig;
+  // Dedicated Vision AI Key for Product Analysis
+  visionAnalysis?: VisionAnalysisConfig;
 }
 
 export interface ImageModelOption {
@@ -171,4 +199,5 @@ export interface ImageModelOption {
   description: string;
   isRecommended?: boolean;
 }
+
 

@@ -542,6 +542,11 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                                 <div
                                   key={prod.id || pIdx}
                                   className="flex items-center gap-1 p-0.5 pr-1.5 rounded bg-emerald-50 border border-emerald-200/80"
+                                  title={
+                                    prod.analysis
+                                      ? `✨ Đã phân tích AI: ${prod.analysis.productName}\n🎨 Màu sắc: ${prod.analysis.colors}\n🌸 Họa tiết: ${prod.analysis.patterns}\n🔤 Chữ/Logo: ${prod.analysis.textOrTypography || 'Không có'}`
+                                      : `${pRefTag}: ${prod.name}`
+                                  }
                                 >
                                   <div
                                     className="w-6 h-6 rounded overflow-hidden bg-stone-100 cursor-pointer"
@@ -554,7 +559,12 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                                       className="w-full h-full object-cover"
                                     />
                                   </div>
-                                  <span className="text-[9px] font-bold text-emerald-800">{pRefTag}</span>
+                                  <div className="flex items-center gap-0.5">
+                                    <span className="text-[9px] font-bold text-emerald-800">{pRefTag}</span>
+                                    {prod.analysis && (
+                                      <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })}
