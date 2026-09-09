@@ -1578,11 +1578,14 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
 - STRICT PROHIBITION OF TYPOGRAPHIC ARTIFACTS: Absolutely NO blurry text, NO smudged lettering, NO distorted or melting font shapes, NO scrambled pseudo-characters, NO hallucinated duplicate names, and NO low-resolution artifacts.`;
 
         // Build structured prompt matching user specification
+        const isCharChange = Boolean(enableCharacter && characterPrompt && characterPrompt.trim());
+        const isBgChange = Boolean(backgroundPrompt && backgroundPrompt.trim());
+
         const promptParts: string[] = [];
-        if (enableCharacter && characterPrompt && characterPrompt.trim()) {
+        if (isCharChange) {
           promptParts.push(`thay nhân vật thành ${characterPrompt.trim()}`);
         }
-        if (backgroundPrompt && backgroundPrompt.trim()) {
+        if (isBgChange) {
           promptParts.push(`thay bối cảnh ${backgroundPrompt.trim()}`);
         }
         if (enableOutfit) {
@@ -1598,6 +1601,13 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         }
         if (removeSubtitles) {
           promptParts.push('xóa phụ đề subtext trong hình');
+        }
+        if (!isCharChange && !isBgChange) {
+          promptParts.push('giữ nguyên phông nền và người mẫu');
+        } else if (!isBgChange) {
+          promptParts.push('giữ nguyên phông nền');
+        } else if (!isCharChange) {
+          promptParts.push('giữ nguyên người mẫu');
         }
         promptParts.push('giữ nguyên tất cả các chi tiết khác');
 
@@ -1952,11 +1962,14 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
       });
 
       // Build structured prompt matching user specification
+      const isCharChange = Boolean(enableCharacter && characterPrompt && characterPrompt.trim());
+      const isBgChange = Boolean(backgroundPrompt && backgroundPrompt.trim());
+
       const promptParts: string[] = [];
-      if (enableCharacter && characterPrompt && characterPrompt.trim()) {
+      if (isCharChange) {
         promptParts.push(`thay nhân vật thành ${characterPrompt.trim()}`);
       }
-      if (backgroundPrompt && backgroundPrompt.trim()) {
+      if (isBgChange) {
         promptParts.push(`thay bối cảnh ${backgroundPrompt.trim()}`);
       }
       if (enableOutfit) {
@@ -1972,6 +1985,13 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
       }
       if (removeSubtitles) {
         promptParts.push('xóa phụ đề subtext trong hình');
+      }
+      if (!isCharChange && !isBgChange) {
+        promptParts.push('giữ nguyên phông nền và người mẫu');
+      } else if (!isBgChange) {
+        promptParts.push('giữ nguyên phông nền');
+      } else if (!isCharChange) {
+        promptParts.push('giữ nguyên người mẫu');
       }
       promptParts.push('giữ nguyên tất cả các chi tiết khác');
 

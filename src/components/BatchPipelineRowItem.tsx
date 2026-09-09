@@ -85,15 +85,18 @@ const generateFullPromptText = (
     ? item.appliedConfig.productReferences
     : (uploadedOutfits.length > 0 ? uploadedOutfits : (uploadedOutfit ? [uploadedOutfit] : []));
 
+  const isCharChange = Boolean(isCharEnabled && charPrompt);
+  const isBgChange = Boolean(isBgEnabled && bgPrompt);
+
   const parts: string[] = [];
 
   // 1. Thay nhân vật (nếu có)
-  if (isCharEnabled && charPrompt) {
+  if (isCharChange) {
     parts.push(`thay nhân vật thành ${charPrompt}`);
   }
 
   // 2. Thay bối cảnh (nếu có)
-  if (isBgEnabled && bgPrompt) {
+  if (isBgChange) {
     parts.push(`thay bối cảnh ${bgPrompt}`);
   }
 
@@ -116,7 +119,16 @@ const generateFullPromptText = (
     parts.push('xóa phụ đề subtext trong hình');
   }
 
-  // 5. Giữ nguyên tất cả các chi tiết khác
+  // 5. Giữ nguyên phông nền và người mẫu nếu không thay đổi bối cảnh hay người mẫu
+  if (!isCharChange && !isBgChange) {
+    parts.push('giữ nguyên phông nền và người mẫu');
+  } else if (!isBgChange) {
+    parts.push('giữ nguyên phông nền');
+  } else if (!isCharChange) {
+    parts.push('giữ nguyên người mẫu');
+  }
+
+  // 6. Giữ nguyên tất cả các chi tiết khác
   parts.push('giữ nguyên tất cả các chi tiết khác');
 
   return parts.join(', ');
