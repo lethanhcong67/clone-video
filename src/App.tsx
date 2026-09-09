@@ -21,6 +21,7 @@ import { VideoSceneExtractor } from './components/VideoSceneExtractor';
 import { BatchImageItem, BatchSettings, OutfitReference, ApiConfig, AppliedReplacementConfig, GptImageConfig, KlingVideoConfig, VisionAnalysisConfig } from './types';
 import { downloadAllAsZip } from './utils/imageUtils';
 import { createSampleBatchItem, generateFallbackResultImage } from './utils/sampleGenerator';
+import { generateFullPromptText } from './utils/promptHelper';
 
 const API_STORAGE_KEY = 'ai_image_api_config_v2';
 
@@ -442,11 +443,16 @@ export default function App() {
     }
 
     const effectiveApiKey = rawGptKey || rawGeminiKey;
-    const effectiveCustomPrompt = (item.customPrompt || item.appliedConfig?.customPrompt)?.trim();
+    
+    // Resolve the exact, complete prompt for this specific row item (matches what is shown in the Prompt Modal)
+    const rowFullPrompt = (item.customPrompt || item.appliedConfig?.customPrompt)?.trim()
+      || generateFullPromptText(item, settings, uploadedOutfits, uploadedOutfit);
 
     const requestPayload = {
       provider: providerToUse,
       variationIndex,
+      prompt: rowFullPrompt,
+      customPrompt: rowFullPrompt,
       gptImageConfig: {
         apiKey: effectiveApiKey ? 'sk-***' : undefined,
         baseUrl: apiConfig.gptImage?.baseUrl || 'https://api.openlux.ai/v1/images/edits',
@@ -462,7 +468,6 @@ export default function App() {
       productName: effectiveProductName,
       outfitPrompt: effectiveOutfitPrompt,
       backgroundPrompt: effectiveBackgroundPrompt,
-      customPrompt: effectiveCustomPrompt || undefined,
       removeSubtitles: settings.removeSubtitles,
       preserveBackground: effectivePreserveBackground,
       preservePose: effectivePreservePose,
@@ -484,6 +489,8 @@ export default function App() {
         body: JSON.stringify({
           provider: providerToUse,
           variationIndex,
+          prompt: rowFullPrompt,
+          customPrompt: rowFullPrompt,
           gptImageConfig: {
             apiKey: effectiveApiKey,
             baseUrl: apiConfig.gptImage?.baseUrl || 'https://api.openlux.ai/v1/images/edits',
@@ -501,7 +508,6 @@ export default function App() {
           productName: effectiveProductName,
           outfitPrompt: effectiveOutfitPrompt,
           backgroundPrompt: effectiveBackgroundPrompt,
-          customPrompt: effectiveCustomPrompt || undefined,
           outfitImageBase64: effectiveOutfitImageBase64,
           outfitMimeType: uploadedOutfit?.mimeType || 'image/jpeg',
           removeSubtitles: settings.removeSubtitles,

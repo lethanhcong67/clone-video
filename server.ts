@@ -1356,10 +1356,13 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         preservePose = true,
         stylePreset = "photorealistic",
         aspectRatio = "1:1",
+        prompt = "",
         customPrompt = "",
         apiKey = "",
         selectedModel = "gemini-3.1-flash-image",
       } = req.body;
+
+      const activeDirectPrompt = (prompt || customPrompt || "").trim();
 
       if (!originalImageBase64) {
         return res.status(400).json({
@@ -1612,7 +1615,7 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         promptParts.push('giữ nguyên tất cả các chi tiết khác');
 
         const promptInstructions = promptParts.join(', ');
-        const effectiveGptPrompt = (customPrompt && customPrompt.trim()) ? customPrompt.trim() : promptInstructions;
+        const effectiveGptPrompt = activeDirectPrompt || promptInstructions;
 
         let generatedImageUrl: string | null = null;
         let lastGptError = "";
@@ -2030,7 +2033,7 @@ CRITICAL TASK: Replace the corresponding garment/clothing/apron worn or displaye
         }
       }
 
-      const effectiveGeminiPrompt = (customPrompt && customPrompt.trim()) ? customPrompt.trim() : promptInstructions;
+      const effectiveGeminiPrompt = activeDirectPrompt || promptInstructions;
 
       parts.push({
         text: effectiveGeminiPrompt,
