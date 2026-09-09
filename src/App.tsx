@@ -514,7 +514,25 @@ export default function App() {
         }),
       });
 
-      const data = await response.json();
+      let data: any = {};
+      const responseText = await response.text();
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (parseErr) {
+        if (response.status === 524) {
+          const timeoutMsg = 'Máy chủ AI bị quá thời gian chờ (HTTP 524 Gateway Timeout). API xử lý quá lâu hoặc đường truyền qua Cloudflare bị gián đoạn. Vui lòng bấm thử lại!';
+          showToast(timeoutMsg, 'warning');
+          throw new Error(timeoutMsg);
+        } else if (response.status === 504 || response.status === 502) {
+          const proxyMsg = `Máy chủ AI phản hồi lỗi cổng kết nối (HTTP ${response.status}). Vui lòng kiểm tra lại đường truyền hoặc thử lại sau.`;
+          showToast(proxyMsg, 'warning');
+          throw new Error(proxyMsg);
+        } else {
+          const generalMsg = `Máy chủ phản hồi lỗi (HTTP ${response.status}): ${responseText.substring(0, 100)}`;
+          showToast(generalMsg, 'warning');
+          throw new Error(generalMsg);
+        }
+      }
 
       if (data.loggedBody) {
         console.log(
