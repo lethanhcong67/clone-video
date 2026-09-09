@@ -1577,23 +1577,31 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
 - PERFECT FONT ALIGNMENT & CONTRAST: Preserve the distinct colorful typography, font weights, and spacing from Image 2 seamlessly integrated into the cloth texture without bleeding, smearing, or distortion.
 - STRICT PROHIBITION OF TYPOGRAPHIC ARTIFACTS: Absolutely NO blurry text, NO smudged lettering, NO distorted or melting font shapes, NO scrambled pseudo-characters, NO hallucinated duplicate names, and NO low-resolution artifacts.`;
 
-        // Build comprehensive prompt for GPT-Image-2 / MN API edits grounded on Image 1 and Image 2
-        const promptInstructions = [
-          "TASK: High-Precision Image-to-Image Multi-Reference Product Inpainting & Editing.",
-          `- Image 1: Ground-truth base photo (${hasBgChange ? "exact subject location, character position, product placement" : "scene composition, camera angle, lighting, background"}).`,
-          "- Image 2: Target product/outfit reference to replace onto the subject in Image 1.",
-          primaryOutfitMandate,
-          productDesignLockMandate,
-          microDetailDirectives,
-          typographyDirectives,
-          characterRequirement,
-          preservePose ? "Strictly maintain the exact same body posture, gestures, and camera angle from the source image." : "",
-          backgroundDirective,
-          removeSubtitles ? "SUBTITLE REMOVAL: Cleanly erase any movie subtitles, captions, watermarks, or text overlays." : "",
-          framingInstruction,
-          `STYLE: ${stylePreset}. Photorealistic master commercial photography, 8k resolution, authentic sharp lighting, ultra-high micro-contrast, no cartoons, no drawings, no extra borders.`,
-        ].filter(Boolean).join("\n\n");
+        // Build structured prompt matching user specification
+        const promptParts: string[] = [];
+        if (enableCharacter && characterPrompt && characterPrompt.trim()) {
+          promptParts.push(`thay nhân vật thành ${characterPrompt.trim()}`);
+        }
+        if (backgroundPrompt && backgroundPrompt.trim()) {
+          promptParts.push(`thay bối cảnh ${backgroundPrompt.trim()}`);
+        }
+        if (enableOutfit) {
+          if (normalizedProductRefs.length > 1) {
+            const refList = normalizedProductRefs.map((p) => `ref${p.refIndex}`).join(', ');
+            promptParts.push(`thay sản phẩm ở hình ${refList} sang hình ref1`);
+          } else {
+            promptParts.push('thay sản phẩm ở hình ref2 sang hình ref1');
+          }
+          if (outfitPrompt && outfitPrompt.trim() && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình ref2')) {
+            promptParts.push(outfitPrompt.trim());
+          }
+        }
+        if (removeSubtitles) {
+          promptParts.push('xóa phụ đề subtext trong hình');
+        }
+        promptParts.push('giữ nguyên tất cả các chi tiết khác');
 
+        const promptInstructions = promptParts.join(', ');
         const effectiveGptPrompt = (customPrompt && customPrompt.trim()) ? customPrompt.trim() : promptInstructions;
 
         let generatedImageUrl: string | null = null;
@@ -1943,94 +1951,31 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         enableCharacter,
       });
 
-      // Build structured instructions for Gemini Image Editing with multiple references: image[ref1, ref2, ...]
-      const referenceIndexMap = [
-        "• ref1 (Image 1): HÌNH GỐC (GROUND-TRUTH BASE PHOTOGRAPH). Giữ nguyên toàn bộ bố cục, góc máy, ánh sáng, bối cảnh và phông nền của ảnh gốc.",
-        ...normalizedProductRefs.map(
-          (p) => `• ref${p.refIndex} (Image ${p.refIndex}): HÌNH ẢNH SẢN PHẨM THAM CHIẾU CẦN THAY THẾ [${p.name}].`
-        ),
-      ].join("\n");
+      // Build structured prompt matching user specification
+      const promptParts: string[] = [];
+      if (enableCharacter && characterPrompt && characterPrompt.trim()) {
+        promptParts.push(`thay nhân vật thành ${characterPrompt.trim()}`);
+      }
+      if (backgroundPrompt && backgroundPrompt.trim()) {
+        promptParts.push(`thay bối cảnh ${backgroundPrompt.trim()}`);
+      }
+      if (enableOutfit) {
+        if (normalizedProductRefs.length > 1) {
+          const refList = normalizedProductRefs.map((p) => `ref${p.refIndex}`).join(', ');
+          promptParts.push(`thay sản phẩm ở hình ${refList} sang hình ref1`);
+        } else {
+          promptParts.push('thay sản phẩm ở hình ref2 sang hình ref1');
+        }
+        if (outfitPrompt && outfitPrompt.trim() && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình ref2')) {
+          promptParts.push(outfitPrompt.trim());
+        }
+      }
+      if (removeSubtitles) {
+        promptParts.push('xóa phụ đề subtext trong hình');
+      }
+      promptParts.push('giữ nguyên tất cả các chi tiết khác');
 
-      const promptInstructions = [
-        "TASK: High-Precision Image-to-Image Multi-Reference Product Inpainting & Editing.",
-        "ARCHITECTURE - MULTIPLE INPUT IMAGES IN STRICT ORDER: [Image 1, Image 2, ...]",
-        referenceIndexMap,
-        "\nCORE MANDATE:",
-        "- ref1 (Image 1) is the ground-truth base photograph. Preserve the composition, room scene, ambient lighting, and model pose from ref1.",
-        "- ref2, ref3, ... are the exact target product visual references to place/wear into ref1.",
-        "\nCRITICAL RULES FOR SURGICAL REPLACEMENT (HIGHEST PRIORITY):",
-        enableOutfit && normalizedProductRefs.length > 0
-          ? `1. TARGET PRODUCT 100% VISUAL CLONE (SURGICAL INPAINTING):
-   - Locate the corresponding clothing, garment, or displayed product in Image 1.
-   - YOU MUST COMPLETELY REMOVE and ERASE this existing item from Image 1, including all of its original artwork, colors, patterns, and text (zero residual).
-   - In its place, render the EXACT replacement product shown in Image 2 (ref2).
-   - DO NOT describe, interpret, or invent any design details. Copy 100% of the visual design, prints, graphics, colors, and structure directly from reference Image 2.
-   - Drape and map the product naturally over the subject/scene from Image 1 with 100% photographic identity.
-   ${enableCharacter
-     ? "- CRITICAL DUAL MODIFICATION: The newly modified character MUST be visibly wearing this replacement product from Image 2 (ref2)! DO NOT keep the old clothing from Image 1 on her!"
-     : "- STRICT RULE: Seamlessly replace or place these exact products into ref1 WITHOUT adding or altering any person or human model. If ref1 has a person, keep their exact face, identity, hair, skin, and body 100% UNCHANGED, only replacing their outfit or placing the accessory naturally. If ref1 does NOT have a person, DO NOT add any person - simply replace the displayed item in place!"}`
-          : (enableOutfit && outfitPrompt ? `1. TARGET PRODUCT / OUTFIT REPLACEMENT: Replace garment or accessories with: "${outfitPrompt}". ${!enableCharacter ? 'DO NOT add any person or character.' : ''}` : "1. OUTFIT & PRODUCTS: Keep all original clothing, garments, and worn jewelry completely unchanged."),
-        enableOutfit && normalizedProductRefs.length > 0
-          ? `2. ABSOLUTE 1:1 PRODUCT DESIGN CLONE MANDATE (ZERO DEVIATION / NO REDESIGN):
-   - EXACT DESIGN IDENTITY: The replacement product in the new image MUST be an UNMODIFIED 1:1 VISUAL CLONE of the exact product design from Image 2.
-   - STRICT PROHIBITION OF CREATIVE ALTERATIONS: DO NOT redesign, DO NOT invent new patterns, DO NOT shift colors, DO NOT alter graphic placements, and DO NOT modify logos/text from Image 2.
-   - 100% REPLICATION: Every floral motif, geometric line, border stitch, strap, pocket, button, and typographic element from Image 2 must appear in the final image with photographic identity, accurately draped over the subject's pose in Image 1.`
-          : "",
-        enableOutfit && normalizedProductRefs.length > 0
-          ? `3. MICRO-DETAIL & TEXTURE FIDELITY MANDATE (1:1 ZERO-LOSS RESOLUTION):
-   - 1:1 REPLICATION OF SMALL INTRICATE DETAILS: Faithfully preserve all micro-patterns, fine embroidery stitches, delicate border seams, miniature floral/geometric artwork, clasps, buttons, and exact graphic prints from Image 2.
-   - HARD EDGE CONTOURS & SHARP LOCAL CONTRAST: Do NOT blur, do NOT smooth out, and do NOT blend away tiny motifs. Every small design element from Image 2 must remain crisp, clearly delineated, and recognizable.
-   - AUTHENTIC TEXTILE GRAIN: Render authentic tactile surface texture (woven canvas threads, leather texture/sheen, metallic luster, silk weave) without plastic or muddy smoothing.
-   - STRICT PROHIBITION: Absolutely NO blurry patches, NO smeared textures, NO melted small designs, and NO loss of fine lines on the target product.`
-          : "",
-        enableOutfit && normalizedProductRefs.length > 0
-          ? `4. TYPOGRAPHY & GRAPHIC DETAIL MANDATE (ULTRA-SHARP VECTOR CLARITY):
-   - REPLICATE ALL TEXT & NAMES WITH VECTOR-GRADE CLARITY: Every word, title, name, letter, and decorative typography on the replacement product (Image 2) must be rendered with razor-sharp pixel edges, exact spelling, clean distinct font shapes, and zero blur.
-   - PERFECT FONT ALIGNMENT & CONTRAST: Preserve the distinct colorful typography, font weights, and spacing from Image 2 seamlessly integrated into the cloth texture without bleeding, smearing, or distortion.
-   - STRICT PROHIBITION OF TYPOGRAPHIC ARTIFACTS: Absolutely NO blurry text, NO smudged lettering, NO distorted or melting font shapes, NO scrambled pseudo-characters, NO hallucinated duplicate names, and NO low-resolution artifacts.`
-          : "",
-        backgroundPrompt && backgroundPrompt.trim()
-          ? `3. FOREGROUND POSITION & SUBJECT LOCK (CRITICAL):
-   - STRICT POSITION LOCK: Keep the EXACT spatial position, canvas coordinates, scale, and bounding box of the person/character and product from Primary Image 1 100% UNCHANGED.
-   - DO NOT move, shift, re-center, or resize the character or product.
-   - The person's body pose, posture, hands, face, and worn/displayed product must remain in their exact same spot.
-   - The result MUST keep the subject anchored in place while only replacing the environment behind/around them.`
-          : `2. CANVAS & BACKGROUND INTEGRITY (GROUND TRUTH):
-   - Retain the exact composition, room interior, background, ambient lighting, furniture, props, and any other unaffected people from Primary Image 1.
-   - The result MUST be a seamless, photorealistic photograph matching Image 1.`,
-        enableCharacter
-          ? (characterPrompt
-              ? `3. TARGET CHARACTER MODIFICATION:
-   - Identify the character in Image 1 and realistically modify them into: "${characterPrompt}".
-   - Keep the exact body pose, physical posture, head tilt, gestures, emotional warmth, and interaction with others from Image 1.
-   - Blend facial anatomy, eyes, expression, skin pores, and hair naturally with the room's lighting.
-   - The newly modified character MUST wear the replacement product from Image 2 (ref2).`
-              : "3. CHARACTER: Retain natural character appearance and pose from Image 1.")
-          : `3. STRICT PROHIBITION - DO NOT ADD OR ALTER ANY PERSON OR CHARACTER:
-   - DO NOT generate, invent, or add any new person, model, human character, or face.
-   - If Primary Image 1 contains a person, keep their face, identity, hair, skin, and body 100% UNCHANGED.
-   - If Primary Image 1 contains NO person (e.g. apron hanging on a wall hook), DO NOT add any human person.
-   - Only replace the garment or product into the original image.`,
-        removeSubtitles
-          ? "4. SUBTITLE & TEXT CLEANUP: Erase any movie subtitles, captions, timestamps, or text watermarks cleanly and inpaint the background smoothly."
-          : "",
-        backgroundPrompt && backgroundPrompt.trim()
-          ? `5. BACKGROUND REPLACEMENT (ENVIRONMENT ONLY - KEEP SUBJECT & PRODUCT POSITION INTACT):
-   - ONLY change and replace the background, scenery, and environment behind and around the subject with: "${backgroundPrompt.trim()}".
-   - ZERO DISPLACEMENT: Keep the exact coordinates and spatial placement of the person, model, and product completely stationary. DO NOT re-position, re-scale, or alter the placement of the subject or product.
-   - Seamlessly inpaint the requested new backdrop around the subject, casting natural contact shadows and subtle environmental light reflection onto the subject without moving them.`
-          : (preserveBackground
-              ? "5. BACKGROUND PRESERVATION: Keep the exact background, scene colors, and depth-of-field identical to Image 1."
-              : ""),
-        preservePose
-          ? "6. POSE PRESERVATION: Strictly maintain the exact physical gesture and posture from Image 1."
-          : "",
-        enableCharacter
-          ? `7. FORMAT & STYLE: Vertical 9:16 aspect ratio composition. Ultra-detailed photorealistic photography (${stylePreset}), natural lighting, 8k resolution, no artifacts, no borders, no cartoons.`
-          : `7. FORMAT & STYLE: Vertical 9:16 aspect ratio composition matching the original. Ultra-detailed photorealistic photography (${stylePreset}), natural lighting, 8k resolution, no artifacts, no extra human models.`,
-      ]
-        .filter(Boolean)
-        .join("\n");
+      const promptInstructions = promptParts.join(', ');
 
       // Prepare parts for multimodal content with explicit positional reference labeling
       const parts: Array<{

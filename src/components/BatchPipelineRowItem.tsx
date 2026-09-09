@@ -72,89 +72,54 @@ const generateFullPromptText = (
 ): string => {
   const isCharEnabled = Boolean(item.appliedConfig?.enableCharacter);
   const charPrompt = item.appliedConfig?.characterPrompt?.trim() || '';
-  const isPosePreserved = item.appliedConfig?.preservePose ?? settings.preservePose ?? true;
+
+  const isBgEnabled = Boolean(item.appliedConfig?.enableBackground);
+  const bgPrompt = (item.appliedConfig?.backgroundPrompt !== undefined ? item.appliedConfig.backgroundPrompt : settings.backgroundPrompt)?.trim() || '';
 
   const isOutfitEnabled = item.appliedConfig?.enableOutfit !== false;
   const outfitPrompt = item.appliedConfig?.outfitPrompt?.trim() || settings.outfitPrompt?.trim() || '';
-  const productName = settings.productName?.trim() || '';
-
-  const isBgEnabled = Boolean(item.appliedConfig?.enableBackground);
-  const bgPrompt = item.appliedConfig?.backgroundPrompt?.trim() || '';
 
   const removeSubtitles = settings.removeSubtitles ?? true;
-  const stylePreset = settings.stylePreset || 'Chân thực / Cinematic (Mặc định)';
 
   const prods = item.appliedConfig?.productReferences && item.appliedConfig.productReferences.length > 0
     ? item.appliedConfig.productReferences
     : (uploadedOutfits.length > 0 ? uploadedOutfits : (uploadedOutfit ? [uploadedOutfit] : []));
 
-  let resolvedOutfitDesc = '';
-  if (isOutfitEnabled && prods.length > 0) {
-    const descs = prods.map((p, idx) => `• ref${idx + 2} (Image ${idx + 2}) [${p.name}]: Thay thế chính xác sản phẩm theo ảnh mẫu`);
-    resolvedOutfitDesc = descs.join('\n');
-    if (productName) resolvedOutfitDesc = `Tên sản phẩm mục tiêu: "${productName}"\n${resolvedOutfitDesc}`;
-    if (outfitPrompt) resolvedOutfitDesc += `\nYêu cầu thay thế bổ sung: ${outfitPrompt}`;
-  } else if (isOutfitEnabled && (productName || outfitPrompt)) {
-    resolvedOutfitDesc = [productName ? `Sản phẩm mục tiêu: ${productName}` : '', outfitPrompt].filter(Boolean).join('\n');
+  const parts: string[] = [];
+
+  // 1. Thay nhân vật (nếu có)
+  if (isCharEnabled && charPrompt) {
+    parts.push(`thay nhân vật thành ${charPrompt}`);
   }
 
-  const primaryOutfitMandate = isOutfitEnabled
-    ? (isCharEnabled
-        ? `CRITICAL MANDATORY TASK - COMPLETE OUTFIT & PRODUCT SWAP (HIGHEST PRIORITY):
-- Both Image 1 (original photo) and Image 2 (product reference) are provided as direct visual references.
-- YOUR PRIMARY OBJECTIVE: The person in the final photo MUST BE WEARING the exact product shown in Image 2!
-${resolvedOutfitDesc ? `- Chi tiết sản phẩm tham chiếu:\n${resolvedOutfitDesc}` : ''}
-- SURGICAL REPLACEMENT:
-  * Locate the corresponding garment, clothing or accessory in Image 1.
-  * COMPLETELY ERASE and REMOVE this original garment and all old text/patterns from Image 1.
-  * Render the person WEARING the replacement product from Image 2 (ref2).
-  * Transfer ALL visual features of Image 2: exact artwork, prints, colors, fabric textures, neck straps, and waist ties.`
-        : `CRITICAL MANDATE - EXACT PRODUCT REPLACEMENT ONLY (NO CHARACTER ALTERATION / NO NEW PERSON):
-- Both Image 1 (original photo) and Image 2 (product reference) are provided as visual references.
-- YOUR PRIMARY OBJECTIVE: Replace the corresponding item in Image 1 with the exact product shown in Image 2.
-${resolvedOutfitDesc ? `- Chi tiết sản phẩm tham chiếu:\n${resolvedOutfitDesc}` : ''}
-- SURGICAL REPLACEMENT: Identify the item in Image 1. COMPLETELY ERASE all old text, embroidery, and old patterns from this item in Image 1!
-- Render the replacement product matching the exact artwork, print pattern, and colors from Image 2.
-- STRICT RULE: DO NOT add, invent, or introduce any new person, model, human character, or face.
-- Keep the original person's exact face, facial features, hair, identity, body, and pose 100% UNCHANGED. Only replace the clothing/product they are wearing.`)
-    : "PRESERVE ORIGINAL CLOTHING: Keep existing garments and worn accessories completely unchanged.";
+  // 2. Thay bối cảnh (nếu có)
+  if (isBgEnabled && bgPrompt) {
+    parts.push(`thay bối cảnh ${bgPrompt}`);
+  }
 
-  const characterRequirement = isCharEnabled
-    ? (charPrompt
-        ? `CHARACTER MODIFICATION:
-- Modify the subject to match: "${charPrompt}".
-- Seamlessly replace the face, facial features, hair, and age while keeping the natural head tilt, body pose, hand gesture, and emotional expression from Image 1.
-- CRITICAL: Even though her face/identity is changed, HER CLOTHING MUST BE THE REPLACEMENT PRODUCT FROM IMAGE 2 (ref2).`
-        : "CHARACTER: Retain natural character appearance, face, and body pose from Image 1.")
-    : `STRICT PROHIBITION - DO NOT ADD OR CHANGE ANY PERSON OR CHARACTER:
-- DO NOT generate, invent, or add any new person, model, face, or human character into the image.
-- Keep identity, face, eyes, hair, age, and biological features 100% UNCHANGED.`;
+  // 3. Thay sản phẩm ở hình ref2 sang hình ref1
+  if (isOutfitEnabled) {
+    if (prods.length > 1) {
+      const refList = prods.map((_, idx) => `ref${idx + 2}`).join(', ');
+      parts.push(`thay sản phẩm ở hình ${refList} sang hình ref1`);
+    } else {
+      parts.push('thay sản phẩm ở hình ref2 sang hình ref1');
+    }
+    // If extra outfit prompt notes are provided, append them cleanly
+    if (outfitPrompt && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình ref2')) {
+      parts.push(outfitPrompt);
+    }
+  }
 
-  const backgroundDirective = isBgEnabled && bgPrompt
-    ? `BACKGROUND REPLACEMENT DIRECTIVE:
-- ONLY replace the background scenery and environment behind/around the subject with: "${bgPrompt}".
-- CRITICAL: Keep the EXACT spatial position, canvas coordinates, scale, and bounding box of the person and product 100% UNCHANGED from Image 1.`
-    : "BACKGROUND PRESERVATION: Keep the exact background environment, room lighting, depth-of-field, and atmosphere identical to Image 1.";
+  // 4. Xóa phụ đề subtext trong hình (nếu bật)
+  if (removeSubtitles) {
+    parts.push('xóa phụ đề subtext trong hình');
+  }
 
-  const typographyDirectives = isOutfitEnabled
-    ? `TYPOGRAPHY & GRAPHIC DETAIL MANDATE (ULTRA-SHARP VECTOR CLARITY):
-- REPLICATE ALL TEXT & NAMES WITH VECTOR-GRADE CLARITY: Every word, title, name, letter, and decorative typography on the replacement product (Image 2) must be rendered with razor-sharp pixel edges, exact spelling, clean distinct font shapes, and zero blur.
-- PERFECT FONT ALIGNMENT & CONTRAST: Preserve the distinct colorful typography, font weights, and spacing from Image 2 seamlessly integrated into the cloth texture without bleeding, smearing, or distortion.
-- STRICT PROHIBITION OF TYPOGRAPHIC ARTIFACTS: Absolutely NO blurry text, NO smudged lettering, NO distorted or melting font shapes, NO scrambled pseudo-characters, NO hallucinated duplicate names, and NO low-resolution artifacts.`
-    : "";
+  // 5. Giữ nguyên tất cả các chi tiết khác
+  parts.push('giữ nguyên tất cả các chi tiết khác');
 
-  return [
-    "TASK: High-Precision Image-to-Image Multi-Reference Product Inpainting & Editing.",
-    "- Image 1: Ground-truth base photo (scene composition, camera angle, lighting, background).",
-    "- Image 2: Target product/outfit reference to replace onto the subject in Image 1.",
-    primaryOutfitMandate,
-    typographyDirectives,
-    characterRequirement,
-    isPosePreserved ? "Strictly maintain the exact same body posture, gestures, and camera angle from the source image." : "",
-    backgroundDirective,
-    removeSubtitles ? "SUBTITLE REMOVAL: Cleanly erase any movie subtitles, captions, watermarks, or text overlays." : "",
-    `STYLE: ${stylePreset}. Photorealistic master photography, 8k resolution, authentic lighting, no cartoons, no drawings, no extra borders.`,
-  ].filter(Boolean).join("\n\n");
+  return parts.join(', ');
 };
 
 export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({

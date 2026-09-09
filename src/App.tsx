@@ -400,7 +400,7 @@ export default function App() {
 
     // If prompt is empty, supply the exact required pattern
     if (isOutfitEnabled && !effectiveOutfitPrompt) {
-      effectiveOutfitPrompt = `Thay thế chính xác ${effectiveProductName || 'mẫu sản phẩm'} theo ảnh tham chiếu ref2 vào hình gốc ref1, xóa toàn bộ chi tiết cũ, giữ nguyên phông nền và người mẫu`;
+      effectiveOutfitPrompt = 'thay sản phẩm ở hình ref2 sang hình ref1';
     }
 
     const hasItemBgConfig = item.appliedConfig?.enableBackground !== undefined;
