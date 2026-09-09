@@ -184,7 +184,7 @@ export default function App() {
     characterPrompt: '',
     enableOutfit: true,
     productName: '',
-    outfitPrompt: 'Thay thế chính xác mẫu sản phẩm theo ảnh tham chiếu ref2 vào hình gốc ref1, xóa toàn bộ chi tiết cũ, giữ nguyên phông nền và người mẫu',
+    outfitPrompt: 'thay sản phẩm ở hình ref2 sang hình ref1',
     removeSubtitles: true,
     preservePose: true,
     preserveBackground: true,
@@ -360,7 +360,7 @@ export default function App() {
     setSettings({
       characterPrompt: '',
       productName: '',
-      outfitPrompt: 'Thay thế chính xác mẫu sản phẩm theo ảnh tham chiếu ref2 vào hình gốc ref1, xóa toàn bộ chi tiết cũ, giữ nguyên phông nền và người mẫu',
+      outfitPrompt: 'thay sản phẩm ở hình ref2 sang hình ref1',
       removeSubtitles: true,
       preservePose: true,
       preserveBackground: true,

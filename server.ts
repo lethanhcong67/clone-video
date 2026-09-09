@@ -636,7 +636,7 @@ Analyze the provided product image in extreme detail and return a single valid J
   "textOrTypography": "All visible text, brand names, phrases, typography, or embroidery letters exactly as written on the product with exact uppercase/lowercase spelling (or 'Không có chữ viết' if none)",
   "materials": "Fabric texture, finish, and material in Vietnamese (e.g., 'Vải canvas cotton dày dặn, da bò sáp, kim loại mạ vàng bóng, hạt đá cẩm thạch')",
   "keyFeatures": "Specific structural and micro-structural elements in Vietnamese (e.g., 'Quai đeo cổ có nấc cài đồng, dây buộc eo bản vừa, 1 túi lớn may phía trước bụng, đường chỉ may đôi, viền bo chỉ nổi')",
-  "suggestedPrompt": "A comprehensive, surgical inpainting prompt in Vietnamese instructing the AI to replace the old product in ref1 with this exact product ref2, preserving 1:1 micro-details, hard edge borders, exact text spelling, and realistic material textures while removing all old details (e.g., 'Thay thế chính xác 100% sản phẩm theo ảnh tham chiếu ref2 với từng chi tiết vi mô, hoa văn thêu thủ công sắc nét, chữ in chính xác, viền chỉ may nổi, xóa sạch toàn bộ sản phẩm cũ trên ảnh gốc ref1, giữ nguyên phông nền và người mẫu')",
+  "suggestedPrompt": "A comprehensive, surgical inpainting prompt in Vietnamese instructing the AI to replace the old product in ref1 with this exact product ref2, preserving 1:1 micro-details, hard edge borders, exact text spelling, and realistic material textures (e.g., 'Thay thế chính xác 100% sản phẩm theo ảnh tham chiếu ref2 với từng chi tiết vi mô, hoa văn thêu thủ công sắc nét, chữ in chính xác, viền chỉ may nổi trên ảnh gốc ref1, giữ nguyên phông nền và người mẫu')",
   "englishPrompt": "Professional master-level inpainting prompt in English detailing the replacement of the item with this exact product, enforcing 1:1 micro-detail retention, vector-grade typography, hard edge contours, authentic textile weave, and zero blur artifacts"
 }
 
@@ -742,7 +742,7 @@ IMPORTANT RULES:
           textOrTypography: "Không có chữ viết",
           materials: "Chất liệu cao cấp tự nhiên",
           keyFeatures: "Đường nét và cấu trúc hoàn chỉnh như ảnh mẫu ref2",
-          suggestedPrompt: `Thay thế chính xác ${fallbackName} theo ảnh tham chiếu ref2 vào hình gốc ref1, xóa toàn bộ chi tiết cũ, giữ nguyên phông nền và người mẫu`,
+          suggestedPrompt: `Thay thế chính xác ${fallbackName} theo ảnh tham chiếu ref2 vào hình gốc ref1, giữ nguyên phông nền và người mẫu`,
           englishPrompt: `Surgically replace the item in ref1 with the exact product in ref2 (${fallbackName}), preserving scene composition and model pose.`,
         };
         usedEngine = "Heuristic rule-based fallback";
