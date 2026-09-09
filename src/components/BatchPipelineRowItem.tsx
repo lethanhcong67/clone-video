@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Trash2,
   RefreshCw,
@@ -39,8 +39,12 @@ import {
   Copy,
   X,
   RotateCw,
+  UploadCloud,
+  Plus,
+  ImagePlus,
 } from 'lucide-react';
 import { AppliedReplacementConfig, BatchImageItem, BatchSettings, OutfitReference, ApiConfig } from '../types';
+import { fileToDataUrl } from '../utils/imageUtils';
 
 interface BatchPipelineRowItemProps {
   item: BatchImageItem;
@@ -233,8 +237,78 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
     setTimeout(() => setIsSavedToast(false), 2500);
   };
 
+  const rowFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRowFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const validFiles = (Array.from(files) as File[]).filter((f) => f.type.startsWith('image/'));
+    if (validFiles.length === 0) return;
+
+    const newRefs: OutfitReference[] = [];
+    const currentList = item.appliedConfig?.productReferences && item.appliedConfig.productReferences.length > 0
+      ? item.appliedConfig.productReferences
+      : (uploadedOutfits.length > 0 ? uploadedOutfits : (uploadedOutfit ? [uploadedOutfit] : []));
+
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        const refIndex = currentList.length + i + 2;
+        const newRef: OutfitReference = {
+          id: `row_ref_${item.id}_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`,
+          name: file.name,
+          previewUrl: dataUrl,
+          dataUrl,
+          mimeType: file.type || 'image/jpeg',
+          description: `Ảnh tham chiếu riêng ref${refIndex}: ${file.name}`,
+          category: 'uploaded',
+        };
+        newRefs.push(newRef);
+      } catch (err) {
+        console.error('Lỗi đọc ảnh tham chiếu hàng:', err);
+      }
+    }
+
+    if (newRefs.length > 0) {
+      const updatedList = [...currentList, ...newRefs];
+      updateItemConfig({
+        productReferences: updatedList,
+        outfitImageUrl: updatedList[0]?.dataUrl || updatedList[0]?.previewUrl || null,
+        outfitImageName: updatedList[0]?.name || null,
+        enableOutfit: true,
+      });
+    }
+
+    if (rowFileInputRef.current) {
+      rowFileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveRowRef = (refId: string) => {
+    const currentList = item.appliedConfig?.productReferences || [];
+    const filtered = currentList.filter((r) => r.id !== refId);
+    updateItemConfig({
+      productReferences: filtered.length > 0 ? filtered : undefined,
+      outfitImageUrl: filtered[0]?.dataUrl || filtered[0]?.previewUrl || null,
+      outfitImageName: filtered[0]?.name || null,
+    });
+  };
+
+  const handleResetToGlobalRefs = () => {
+    updateItemConfig({
+      productReferences: undefined,
+      outfitImageUrl: uploadedOutfits[0]?.previewUrl || uploadedOutfit?.previewUrl || null,
+      outfitImageName: uploadedOutfits[0]?.name || uploadedOutfit?.name || null,
+    });
+  };
+
   // Applied config data for this specific row
   const appliedCharacter = item.appliedConfig?.characterPrompt || settings.characterPrompt;
+  const hasCustomRowRefs = Boolean(
+    item.appliedConfig?.productReferences && item.appliedConfig.productReferences.length > 0
+  );
   const appliedProductReferences: OutfitReference[] =
     item.appliedConfig?.productReferences && item.appliedConfig.productReferences.length > 0
       ? item.appliedConfig.productReferences
@@ -551,7 +625,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                 );
               })()}
 
-              {/* Sub-item B: Outfit */}
+              {/* Sub-item B: Outfit & Target Products */}
               {(() => {
                 const isOutfitActive = item.appliedConfig?.enableOutfit !== false;
                 return (
@@ -562,80 +636,135 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                         : 'bg-stone-100/70 border-stone-200'
                     }`}
                   >
+                    {/* Hidden file input for uploading row-specific reference image */}
+                    <input
+                      ref={rowFileInputRef}
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleRowFileUpload}
+                      className="hidden"
+                    />
+
                     <div className="flex items-center justify-between gap-1 mb-1.5">
-                      <div className="flex items-center gap-1 text-[11px] font-bold text-stone-900">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-stone-900">
                         <Shirt className={`w-3.5 h-3.5 ${isOutfitActive ? 'text-emerald-600' : 'text-stone-400'}`} />
                         <span>Trang phục / Đồ:</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => updateItemConfig({ enableOutfit: !isOutfitActive })}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
-                          isOutfitActive
-                            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300/80'
-                            : 'bg-stone-200 text-stone-600 hover:bg-stone-300 border border-stone-300'
-                        }`}
-                      >
-                        {isOutfitActive ? (
-                          <>
-                            <CheckSquare className="w-3 h-3 text-emerald-600" />
-                            <span>Thay thế</span>
-                          </>
-                        ) : (
-                          <>
-                            <Square className="w-3 h-3 text-stone-400" />
-                            <span>Giữ gốc</span>
-                          </>
+                        {hasCustomRowRefs && (
+                          <span className="text-[9.5px] font-semibold text-emerald-800 bg-emerald-100/90 border border-emerald-300/80 px-1.5 py-0.2 rounded-full">
+                            Ảnh riêng
+                          </span>
                         )}
-                      </button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {hasCustomRowRefs && (
+                          <button
+                            type="button"
+                            onClick={handleResetToGlobalRefs}
+                            className="text-[10px] text-stone-400 hover:text-emerald-700 font-medium underline inline-flex items-center gap-0.5 cursor-pointer mr-0.5"
+                            title="Khôi phục về ảnh tham chiếu chung của cột bên trái"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" />
+                            <span>Mẫu chung</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => updateItemConfig({ enableOutfit: !isOutfitActive })}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                            isOutfitActive
+                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300/80'
+                              : 'bg-stone-200 text-stone-600 hover:bg-stone-300 border border-stone-300'
+                          }`}
+                        >
+                          {isOutfitActive ? (
+                            <>
+                              <CheckSquare className="w-3 h-3 text-emerald-600" />
+                              <span>Thay thế</span>
+                            </>
+                          ) : (
+                            <>
+                              <Square className="w-3 h-3 text-stone-400" />
+                              <span>Giữ gốc</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
 
                     {isOutfitActive ? (
-                      <div className="space-y-1">
-                        {appliedProductReferences.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 mb-1">
-                            {appliedProductReferences.map((prod, pIdx) => {
-                              const pRefTag = `Ref ${pIdx + 2}`;
-                              return (
+                      <div className="space-y-1.5">
+                        {/* Reference Images Toolbar & Thumbnails */}
+                        <div className="flex flex-wrap items-center gap-1 mb-1">
+                          {appliedProductReferences.map((prod, pIdx) => {
+                            const pRefTag = `Ref ${pIdx + 2}`;
+                            const isRowCustomSingle = item.appliedConfig?.productReferences?.some((r) => r.id === prod.id);
+                            return (
+                              <div
+                                key={prod.id || pIdx}
+                                className="group relative flex items-center gap-1 p-0.5 pr-1.5 rounded-md bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-200/90 transition-colors shadow-2xs"
+                                title={
+                                  prod.analysis
+                                    ? `✨ Đã phân tích AI: ${prod.analysis.productName}\n🎨 Màu sắc: ${prod.analysis.colors}\n🌸 Họa tiết: ${prod.analysis.patterns}\n🔤 Chữ/Logo: ${prod.analysis.textOrTypography || 'Không có'}`
+                                    : `${pRefTag}: ${prod.name}`
+                                }
+                              >
                                 <div
-                                  key={prod.id || pIdx}
-                                  className="flex items-center gap-1 p-0.5 pr-1.5 rounded bg-emerald-50 border border-emerald-200/80"
-                                  title={
-                                    prod.analysis
-                                      ? `✨ Đã phân tích AI: ${prod.analysis.productName}\n🎨 Màu sắc: ${prod.analysis.colors}\n🌸 Họa tiết: ${prod.analysis.patterns}\n🔤 Chữ/Logo: ${prod.analysis.textOrTypography || 'Không có'}`
-                                      : `${pRefTag}: ${prod.name}`
-                                  }
+                                  className="w-6 h-6 rounded overflow-hidden bg-stone-100 cursor-pointer shrink-0 border border-emerald-300/60"
+                                  onClick={() => onOpenLightbox(prod.previewUrl || prod.dataUrl || '', `${pRefTag}: ${prod.name}`)}
                                 >
-                                  <div
-                                    className="w-6 h-6 rounded overflow-hidden bg-stone-100 cursor-pointer"
-                                    onClick={() => onOpenLightbox(prod.previewUrl || prod.dataUrl || '', `${pRefTag}: ${prod.name}`)}
-                                  >
-                                    <img
-                                      src={prod.previewUrl || prod.dataUrl}
-                                      alt={prod.name}
-                                      referrerPolicy="no-referrer"
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </div>
-                                  <div className="flex items-center gap-0.5">
-                                    <span className="text-[9px] font-bold text-emerald-800">{pRefTag}</span>
-                                    {prod.analysis && (
-                                      <Sparkles className="w-2.5 h-2.5 text-amber-500" />
-                                    )}
-                                  </div>
+                                  <img
+                                    src={prod.previewUrl || prod.dataUrl}
+                                    alt={prod.name}
+                                    referrerPolicy="no-referrer"
+                                    className="w-full h-full object-cover"
+                                  />
                                 </div>
-                              );
-                            })}
-                          </div>
-                        ) : appliedOutfitImg ? (
-                          <div
-                            className="flex items-center gap-1.5 p-1 rounded bg-emerald-50 border border-emerald-200/80 mb-1 cursor-pointer"
-                            onClick={() => onOpenLightbox(appliedOutfitImg, `Ảnh mẫu: ${appliedOutfitName || ''}`)}
+                                <div className="flex items-center gap-0.5">
+                                  <span className="text-[9.5px] font-bold text-emerald-900">{pRefTag}</span>
+                                  {prod.analysis && (
+                                    <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                                  )}
+                                </div>
+                                {isRowCustomSingle && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRemoveRowRef(prod.id);
+                                    }}
+                                    className="ml-0.5 p-0.5 rounded text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                    title="Xóa ảnh tham chiếu này khỏi hàng"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {/* Add/Upload new reference image for this row button */}
+                          <button
+                            type="button"
+                            onClick={() => rowFileInputRef.current?.click()}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-bold text-emerald-800 bg-emerald-100/80 hover:bg-emerald-200/90 border border-emerald-300/90 transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+                            title="Tải lên ảnh mẫu/sản phẩm tham chiếu riêng cho hàng này"
                           >
-                            <img src={appliedOutfitImg} alt="Mẫu" className="w-6 h-6 rounded object-cover" />
-                            <span className="text-[10px] font-semibold text-emerald-800 truncate">{appliedOutfitName || 'Ref 2'}</span>
-                          </div>
-                        ) : null}
+                            <Plus className="w-3 h-3 text-emerald-700" />
+                            <span>Tải ảnh ref mới</span>
+                          </button>
+                        </div>
+
+                        {appliedProductReferences.length === 0 && !appliedOutfitImg && (
+                          <button
+                            type="button"
+                            onClick={() => rowFileInputRef.current?.click()}
+                            className="w-full py-2 px-3 rounded-lg border border-dashed border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100/80 text-emerald-800 text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            <UploadCloud className="w-4 h-4 text-emerald-600" />
+                            <span>Bấm để tải ảnh tham chiếu riêng cho hàng này</span>
+                          </button>
+                        )}
 
                         <textarea
                           rows={2}
