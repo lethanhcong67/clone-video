@@ -185,7 +185,7 @@ export default function App() {
     characterPrompt: '',
     enableOutfit: true,
     productName: '',
-    outfitPrompt: 'thay sản phẩm ở hình ref2 sang hình ref1',
+    outfitPrompt: 'thay sản phẩm ở hình image2 sang hình image1',
     removeSubtitles: true,
     preservePose: true,
     preserveBackground: true,
@@ -361,7 +361,7 @@ export default function App() {
     setSettings({
       characterPrompt: '',
       productName: '',
-      outfitPrompt: 'thay sản phẩm ở hình ref2 sang hình ref1',
+      outfitPrompt: 'thay sản phẩm ở hình image2 sang hình image1',
       removeSubtitles: true,
       preservePose: true,
       preserveBackground: true,
@@ -401,7 +401,7 @@ export default function App() {
 
     // If prompt is empty, supply the exact required pattern
     if (isOutfitEnabled && !effectiveOutfitPrompt) {
-      effectiveOutfitPrompt = 'thay sản phẩm ở hình ref2 sang hình ref1';
+      effectiveOutfitPrompt = 'thay sản phẩm ở hình image2 sang hình image1';
     }
 
     const hasItemBgConfig = item.appliedConfig?.enableBackground !== undefined;

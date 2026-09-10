@@ -33,6 +33,7 @@ export const generateFullPromptText = (
 
   const isCharChange = Boolean(isCharEnabled && charPrompt);
   const isBgChange = Boolean(isBgEnabled && bgPrompt);
+  const productName = (item.appliedConfig?.productName || settings.productName || '').trim();
 
   const parts: string[] = [];
 
@@ -46,16 +47,17 @@ export const generateFullPromptText = (
     parts.push(`thay bối cảnh ${bgPrompt}`);
   }
 
-  // 3. Thay sản phẩm ở hình ref2 sang hình ref1
+  // 3. Thay sản phẩm ở hình image2 sang hình image1 (phổ quát cho mọi loại sản phẩm)
   if (isOutfitEnabled) {
+    const targetLabel = productName ? `sản phẩm "${productName}"` : 'sản phẩm';
     if (prods.length > 1) {
-      const refList = prods.map((_, idx) => `ref${idx + 2}`).join(', ');
-      parts.push(`thay sản phẩm ở hình ${refList} sang hình ref1`);
+      const refList = prods.map((_, idx) => `image${idx + 2}`).join(', ');
+      parts.push(`thay ${targetLabel} ở hình ${refList} sang hình image1 (xóa bỏ sản phẩm cũ ở image1 và thay thế chính xác bằng sản phẩm mới từ ${refList})`);
     } else {
-      parts.push('thay sản phẩm ở hình ref2 sang hình ref1');
+      parts.push(`thay ${targetLabel} ở hình image2 sang hình image1 (xóa bỏ sản phẩm cũ ở image1 và thay thế chính xác bằng sản phẩm mới từ image2)`);
     }
     // If extra outfit prompt notes are provided, append them cleanly
-    if (outfitPrompt && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình ref2') && !outfitPrompt.toLowerCase().includes('thay thế chính xác')) {
+    if (outfitPrompt && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình image2') && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình ref2') && !outfitPrompt.toLowerCase().includes('thay thế chính xác')) {
       parts.push(outfitPrompt);
     }
   }
@@ -65,17 +67,14 @@ export const generateFullPromptText = (
     parts.push('xóa phụ đề subtext trong hình');
   }
 
-  // 5. Giữ nguyên phông nền và người mẫu nếu không thay đổi bối cảnh hay người mẫu
+  // 5. Giữ nguyên bối cảnh, bố cục và người mẫu (nếu có) mà không bảo toàn sản phẩm cũ
   if (!isCharChange && !isBgChange) {
-    parts.push('giữ nguyên phông nền và người mẫu');
+    parts.push('giữ nguyên bố cục, ánh sáng, phông nền và người mẫu (nếu có)');
   } else if (!isBgChange) {
-    parts.push('giữ nguyên phông nền');
+    parts.push('giữ nguyên bố cục, ánh sáng và phông nền');
   } else if (!isCharChange) {
-    parts.push('giữ nguyên người mẫu');
+    parts.push('giữ nguyên người mẫu và tư thế (nếu có)');
   }
-
-  // 6. Giữ nguyên tất cả các chi tiết khác
-  parts.push('giữ nguyên tất cả các chi tiết khác');
 
   return parts.join(', ');
 };

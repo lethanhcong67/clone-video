@@ -674,7 +674,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                           rows={2}
                           value={item.appliedConfig?.outfitPrompt !== undefined ? item.appliedConfig.outfitPrompt : appliedOutfitPrompt}
                           onChange={(e) => updateItemConfig({ outfitPrompt: e.target.value })}
-                          placeholder={`Thay thế chính xác ${item.appliedConfig?.productName || settings.productName || 'mẫu sản phẩm'} theo ảnh tham chiếu ref2 vào hình gốc ref1, giữ nguyên phông nền và người mẫu`}
+                          placeholder={`Thay thế chính xác ${item.appliedConfig?.productName || settings.productName || 'sản phẩm'} theo ảnh tham chiếu image2 vào hình gốc image1 (xóa bỏ sản phẩm cũ ở image1)`}
                           className="w-full text-xs font-medium text-stone-800 bg-stone-50/70 hover:bg-white focus:bg-white border border-stone-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200 rounded p-1.5 transition-all resize-none outline-none leading-relaxed placeholder:text-stone-400 placeholder:italic"
                         />
                         {item.appliedConfig?.outfitPrompt !== undefined && item.appliedConfig.outfitPrompt !== settings.outfitPrompt && (

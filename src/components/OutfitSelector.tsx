@@ -55,8 +55,8 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
   const getStandardPrompt = (name: string) => {
     const trimmed = name.trim();
     return trimmed
-      ? `thay sản phẩm ở hình ref2 sang hình ref1 (${trimmed})`
-      : 'thay sản phẩm ở hình ref2 sang hình ref1';
+      ? `thay sản phẩm "${trimmed}" ở hình image2 sang hình image1 (xóa bỏ sản phẩm cũ ở image1 và thay thế chính xác bằng sản phẩm mới từ image2)`
+      : 'thay sản phẩm ở hình image2 sang hình image1 (xóa bỏ sản phẩm cũ ở image1 và thay thế chính xác bằng sản phẩm mới từ image2)';
   };
 
   const handleProductNameChange = (newName: string) => {
@@ -329,7 +329,7 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
                 rows={2}
                 value={outfitPrompt}
                 onChange={(e) => onChangePrompt(e.target.value)}
-                placeholder={`Thay thế chính xác ${productName.trim() || '[tên sản phẩm]'} theo ảnh tham chiếu ref2 vào hình gốc ref1, giữ nguyên phông nền và người mẫu`}
+                placeholder={`Thay thế chính xác ${productName.trim() ? `"${productName.trim()}"` : 'sản phẩm'} theo ảnh tham chiếu image2 vào hình gốc image1 (xóa bỏ sản phẩm cũ ở image1)`}
                 className="w-full rounded-lg border border-stone-300 p-2 text-xs text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-hidden transition-all resize-none bg-stone-50/50 hover:bg-white focus:bg-white"
               />
             </div>

@@ -1519,25 +1519,24 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
 
         const primaryOutfitMandate = enableOutfit
           ? (enableCharacter
-              ? `CRITICAL MANDATORY TASK - 100% PRODUCT VISUAL CLONE (HIGHEST PRIORITY):
+              ? `CRITICAL MANDATORY TASK - 100% PRODUCT VISUAL REPLACEMENT (HIGHEST PRIORITY):
 - Both Image 1 (original scene photo) and Image 2 (replacement product reference) are provided directly as visual references.
-- YOUR PRIMARY OBJECTIVE: The person in the final photo MUST BE WEARING the exact product shown in Image 2!
-- DO NOT describe, re-interpret, or invent any design details. Look directly at reference Image 2 and copy 100% of its visual design, prints, graphics, colors, and structure directly onto the person.
+- YOUR PRIMARY OBJECTIVE: Replace the corresponding product, garment, accessory, or object in Image 1 with the exact product shown in Image 2!
+- DO NOT describe, re-interpret, or invent any design details. Look directly at reference Image 2 and copy 100% of its visual design, prints, graphics, colors, shape, and structure.
 - SURGICAL REPLACEMENT:
-  * Locate the corresponding worn garment/item in Image 1.
+  * Locate the corresponding item/product in Image 1 (whether worn by the subject, held in hand, or placed in the scene).
   * COMPLETELY ERASE and REMOVE this original item and ALL of its text, embroidery, and conflicting artwork from Image 1.
-  * Render the person WEARING the exact replacement product from Image 2 (ref2) with 100% photographic identity.
-  * HIGHEST PRIORITY: DO NOT KEEP THE OLD CLOTHING FROM IMAGE 1! The subject MUST be wearing the product from Image 2!`
-              : `CRITICAL MANDATE - 100% PRODUCT REPLACEMENT CLONE (NO CHARACTER ALTERATION / NO NEW PERSON):
+  * Render the exact replacement product from Image 2 (image2) with 100% photographic fidelity.
+  * HIGHEST PRIORITY: DO NOT KEEP THE OLD PRODUCT/CLOTHING FROM IMAGE 1! The final image MUST feature the exact product from Image 2!`
+              : `CRITICAL MANDATE - 100% UNIVERSAL PRODUCT REPLACEMENT CLONE (NO CHARACTER ALTERATION):
 - Both Image 1 (original photo) and Image 2 (product reference) are provided directly as visual references.
-- YOUR PRIMARY OBJECTIVE: Replace the corresponding item in Image 1 with the exact product shown in Image 2.
+- YOUR PRIMARY OBJECTIVE: Replace the corresponding product, item, prop, or garment in Image 1 with the exact product shown in Image 2.
 - DO NOT describe, re-interpret, or invent any design details. Copy 100% of the visual design directly from Image 2.
-- SURGICAL REPLACEMENT: Identify the item in Image 1. COMPLETELY ERASE all old text, embroidery, and old patterns from this item in Image 1!
-- Render the replacement product matching 100% of the exact artwork, print pattern, and colors directly from Image 2.
-- STRICT RULE: DO NOT add, invent, or introduce any new person, model, human character, or face.
-- If the original photo has a person: Keep their exact face, facial features, hair, identity, body, and pose 100% UNCHANGED. Only replace the clothing they are wearing.
-- If the original photo does NOT have a person: Simply replace the hanging or displayed item in place with the exact product from Image 2 in the same format and background.`)
-          : "PRESERVE ORIGINAL CLOTHING: Keep existing garments and worn accessories completely unchanged.";
+- SURGICAL REPLACEMENT: Identify the target product in Image 1. COMPLETELY ERASE all old text, embroidery, patterns, and old shapes from this item in Image 1!
+- Render the replacement product matching 100% of the exact artwork, print pattern, texture, and colors directly from Image 2.
+- If the original photo has a person wearing or holding the product: Keep their exact face, facial features, hair, identity, body, and pose 100% UNCHANGED. Only replace the product/clothing.
+- If the original photo does NOT have a person (e.g. product on a table, shelf, studio background, flat lay): Simply replace the displayed item in place with the exact product from Image 2 in the same environment, lighting, and background composition.`)
+          : "PRESERVE ORIGINAL PRODUCT & CLOTHING: Keep existing items and scene props completely unchanged.";
 
         const characterRequirement = enableCharacter
           ? (characterPrompt && characterPrompt.trim()
@@ -1592,13 +1591,14 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
           promptParts.push(`thay bối cảnh ${backgroundPrompt.trim()}`);
         }
         if (enableOutfit) {
+          const targetLabel = (productName && productName.trim()) ? `sản phẩm "${productName.trim()}"` : 'sản phẩm';
           if (normalizedProductRefs.length > 1) {
-            const refList = normalizedProductRefs.map((p) => `ref${p.refIndex}`).join(', ');
-            promptParts.push(`thay sản phẩm ở hình ${refList} sang hình ref1`);
+            const refList = normalizedProductRefs.map((p) => `image${p.refIndex}`).join(', ');
+            promptParts.push(`thay ${targetLabel} ở hình ${refList} sang hình image1 (xóa bỏ sản phẩm cũ ở image1 và thay thế chính xác bằng sản phẩm mới từ ${refList})`);
           } else {
-            promptParts.push('thay sản phẩm ở hình ref2 sang hình ref1');
+            promptParts.push(`thay ${targetLabel} ở hình image2 sang hình image1 (xóa bỏ sản phẩm cũ ở image1 và thay thế chính xác bằng sản phẩm mới từ image2)`);
           }
-          if (outfitPrompt && outfitPrompt.trim() && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình ref2')) {
+          if (outfitPrompt && outfitPrompt.trim() && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình image2') && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình ref2')) {
             promptParts.push(outfitPrompt.trim());
           }
         }
@@ -1606,13 +1606,12 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
           promptParts.push('xóa phụ đề subtext trong hình');
         }
         if (!isCharChange && !isBgChange) {
-          promptParts.push('giữ nguyên phông nền và người mẫu');
+          promptParts.push('giữ nguyên bố cục, ánh sáng, phông nền và người mẫu (nếu có)');
         } else if (!isBgChange) {
-          promptParts.push('giữ nguyên phông nền');
+          promptParts.push('giữ nguyên bố cục, ánh sáng và phông nền');
         } else if (!isCharChange) {
-          promptParts.push('giữ nguyên người mẫu');
+          promptParts.push('giữ nguyên người mẫu và tư thế (nếu có)');
         }
-        promptParts.push('giữ nguyên tất cả các chi tiết khác');
 
         const promptInstructions = promptParts.join(', ');
         const effectiveGptPrompt = activeDirectPrompt || promptInstructions;
@@ -1976,13 +1975,14 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         promptParts.push(`thay bối cảnh ${backgroundPrompt.trim()}`);
       }
       if (enableOutfit) {
+        const targetLabel = (productName && productName.trim()) ? `sản phẩm "${productName.trim()}"` : 'sản phẩm';
         if (normalizedProductRefs.length > 1) {
-          const refList = normalizedProductRefs.map((p) => `ref${p.refIndex}`).join(', ');
-          promptParts.push(`thay sản phẩm ở hình ${refList} sang hình ref1`);
+          const refList = normalizedProductRefs.map((p) => `image${p.refIndex}`).join(', ');
+          promptParts.push(`thay ${targetLabel} ở hình ${refList} sang hình image1 (xóa bỏ sản phẩm cũ ở image1 và thay thế chính xác bằng sản phẩm mới từ ${refList})`);
         } else {
-          promptParts.push('thay sản phẩm ở hình ref2 sang hình ref1');
+          promptParts.push(`thay ${targetLabel} ở hình image2 sang hình image1 (xóa bỏ sản phẩm cũ ở image1 và thay thế chính xác bằng sản phẩm mới từ image2)`);
         }
-        if (outfitPrompt && outfitPrompt.trim() && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình ref2')) {
+        if (outfitPrompt && outfitPrompt.trim() && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình image2') && !outfitPrompt.toLowerCase().includes('thay sản phẩm ở hình ref2')) {
           promptParts.push(outfitPrompt.trim());
         }
       }
@@ -1990,13 +1990,12 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         promptParts.push('xóa phụ đề subtext trong hình');
       }
       if (!isCharChange && !isBgChange) {
-        promptParts.push('giữ nguyên phông nền và người mẫu');
+        promptParts.push('giữ nguyên bố cục, ánh sáng, phông nền và người mẫu (nếu có)');
       } else if (!isBgChange) {
-        promptParts.push('giữ nguyên phông nền');
+        promptParts.push('giữ nguyên bố cục, ánh sáng và phông nền');
       } else if (!isCharChange) {
-        promptParts.push('giữ nguyên người mẫu');
+        promptParts.push('giữ nguyên người mẫu và tư thế (nếu có)');
       }
-      promptParts.push('giữ nguyên tất cả các chi tiết khác');
 
       const promptInstructions = promptParts.join(', ');
 
@@ -2007,7 +2006,7 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
       }> = [
         {
           text: `[IMAGE 1: GROUND-TRUTH BASE PHOTOGRAPH]
-The following image is Image 1. Retain the character body pose, person identity, and exact spatial coordinates of all subjects and products from this image.${backgroundPrompt && backgroundPrompt.trim() ? " ONLY replace the background environment behind them with the requested new scenery, keeping character and product positions strictly locked." : " Retain the room environment, background, and scene lighting from this image."}`,
+The following image is Image 1. Retain the scene composition, environment lighting, camera perspective, and all subjects/people (if present) from this image.${backgroundPrompt && backgroundPrompt.trim() ? " ONLY replace the background environment with the requested new scenery, keeping subject positions locked." : " Retain the room environment and background lighting from this image."}`,
         },
         {
           inlineData: {
@@ -2021,8 +2020,8 @@ The following image is Image 1. Retain the character body pose, person identity,
       if (enableOutfit && normalizedProductRefs.length > 0) {
         for (const prod of normalizedProductRefs) {
           parts.push({
-            text: `[IMAGE ${prod.refIndex}: TARGET PRODUCT / OUTFIT REFERENCE - ${prod.name}]
-CRITICAL TASK: Replace the corresponding garment/clothing/apron worn or displayed in Image 1 with the exact product in this reference image. Transfer its exact colors, patterns, logos/text, and straps. The subject MUST be wearing this item!`,
+            text: `[IMAGE ${prod.refIndex}: TARGET PRODUCT REFERENCE - ${prod.name}]
+CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in Image 1, ERASE it completely, and replace it with the exact product in this reference image (Image ${prod.refIndex}). Replicate 100% of its visual details, shapes, colors, prints, logos, typography, and material textures.`,
           });
           parts.push({
             inlineData: {
