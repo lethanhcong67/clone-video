@@ -2215,6 +2215,37 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
     }
   });
 
+  // Proxy download endpoint to safely stream media files without opening tabs or cross-origin navigation
+  app.get("/api/proxy/download", async (req, res) => {
+    try {
+      const fileUrl = req.query.url as string;
+      const rawFilename = (req.query.filename as string) || "downloaded_file";
+      const cleanFilename = encodeURIComponent(rawFilename);
+
+      if (!fileUrl) {
+        return res.status(400).json({ error: "Thiếu tham số URL tệp tải về" });
+      }
+
+      const response = await fetch(fileUrl);
+      if (!response.ok) {
+        return res.status(response.status).json({ error: `Không thể tải tệp từ nguồn từ xa (${response.status})` });
+      }
+
+      const contentType = response.headers.get("content-type") || "application/octet-stream";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${rawFilename}"; filename*=UTF-8''${cleanFilename}`
+      );
+
+      const arrayBuffer = await response.arrayBuffer();
+      return res.send(Buffer.from(arrayBuffer));
+    } catch (error: any) {
+      console.error("Lỗi proxy download:", error);
+      return res.status(500).json({ error: error?.message || "Lỗi khi tải tệp qua proxy download" });
+    }
+  });
+
   // Vite integration
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

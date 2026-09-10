@@ -44,7 +44,7 @@ import {
   ImagePlus,
 } from 'lucide-react';
 import { AppliedReplacementConfig, BatchImageItem, BatchSettings, OutfitReference, ApiConfig } from '../types';
-import { fileToDataUrl } from '../utils/imageUtils';
+import { fileToDataUrl, downloadImage, downloadVideo } from '../utils/imageUtils';
 import { generateFullPromptText } from '../utils/promptHelper';
 
 interface BatchPipelineRowItemProps {
@@ -248,21 +248,16 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
   };
 
   const handleDownloadImage = (url: string, filename: string) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `swapped_${filename}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const ext = url.includes('.webp') ? '.webp' : url.includes('.jpeg') || url.includes('.jpg') ? '.jpg' : '.png';
+    const baseName = filename.replace(/\.[^/.]+$/, '');
+    downloadImage(url, `swapped_${baseName}${ext}`);
   };
 
   const handleDownloadVideo = (url: string, filename: string) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `video_${filename.replace(/\.[^/.]+$/, '')}.webm`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const isMp4 = url.includes('.mp4') || (!url.startsWith('blob:') && !url.includes('.webm'));
+    const ext = isMp4 ? '.mp4' : '.webm';
+    const baseName = filename.replace(/\.[^/.]+$/, '');
+    downloadVideo(url, `video_${baseName}${ext}`);
   };
 
 

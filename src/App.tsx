@@ -225,6 +225,19 @@ export default function App() {
       });
   }, []);
 
+  // Prevent accidental page close or refresh if there are tasks or generated results
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isProcessing || items.length > 0) {
+        e.preventDefault();
+        e.returnValue = 'Bạn có dữ liệu đang làm việc chưa lưu. Bạn có chắc muốn rời khỏi trang không?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isProcessing, items.length]);
+
   const showToast = (message: string, type: 'info' | 'success' | 'warning' = 'info') => {
     setNotification({ message, type });
     setTimeout(() => {

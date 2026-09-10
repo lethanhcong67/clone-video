@@ -39,7 +39,7 @@ import {
   Clapperboard,
 } from 'lucide-react';
 import { AppliedReplacementConfig, BatchImageItem, BatchSettings, OutfitReference, ApiConfig, CameraMovementType } from '../types';
-import { fileToDataUrl, getImageDimensions } from '../utils/imageUtils';
+import { fileToDataUrl, getImageDimensions, downloadImage, downloadVideo } from '../utils/imageUtils';
 import { generateMotionVideoFromImage } from '../utils/videoGenerator';
 import { CAMERA_MOVEMENT_PRESETS } from '../data/presets';
 import { BatchPipelineRowItem } from './BatchPipelineRowItem';
@@ -375,22 +375,17 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
 
   // Download individual image
   const handleDownloadImage = (url: string, filename: string) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `swapped_${filename}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const ext = url.includes('.webp') ? '.webp' : url.includes('.jpeg') || url.includes('.jpg') ? '.jpg' : '.png';
+    const baseName = filename.replace(/\.[^/.]+$/, '');
+    downloadImage(url, `swapped_${baseName}${ext}`);
   };
 
   // Download individual video
   const handleDownloadVideo = (url: string, filename: string) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `video_${filename.replace(/\.[^/.]+$/, '')}.webm`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const isMp4 = url.includes('.mp4') || (!url.startsWith('blob:') && !url.includes('.webm'));
+    const ext = isMp4 ? '.mp4' : '.webm';
+    const baseName = filename.replace(/\.[^/.]+$/, '');
+    downloadVideo(url, `video_${baseName}${ext}`);
   };
 
   return (
