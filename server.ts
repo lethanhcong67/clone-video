@@ -2218,9 +2218,8 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
   // Proxy download endpoint to safely stream media files and handle native browser downloads
   app.get("/api/proxy/download", async (req, res) => {
     try {
-      const fileUrl = req.query.url as string;
+      const rawUrl = req.query.url as string;
       let rawFilename = (req.query.filename as string) || "video.mp4";
-      const isDownload = req.query.download !== "0";
 
       // Ensure proper extension
       if (!rawFilename.includes(".")) {
@@ -2229,20 +2228,36 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
 
       const cleanFilename = encodeURIComponent(rawFilename);
 
-      if (!fileUrl) {
+      if (!rawUrl) {
         return res.status(400).json({ error: "Thiếu tham số URL tệp tải về" });
       }
 
-      // Handle unencoded spaces in URL path while preserving query signature
-      const safeUrl = fileUrl.includes(" ") ? encodeURI(fileUrl) : fileUrl;
+      // Try multiple URL formats for cloud CDNs (Tencent COS / AWS S3)
+      const urlsToTry = [
+        rawUrl,
+        rawUrl.includes(" ") ? encodeURI(rawUrl) : null,
+        rawUrl.includes(" ") ? rawUrl.replace(/ /g, "%20") : null,
+      ].filter(Boolean) as string[];
 
-      const response = await fetch(safeUrl);
+      let response: Response | null = null;
+      for (const targetUrl of urlsToTry) {
+        try {
+          const r = await fetch(targetUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+              Accept: "*/*",
+            },
+          });
+          if (r.ok) {
+            response = r;
+            break;
+          }
+        } catch (_) {}
+      }
 
-      if (!response.ok) {
-        console.error(`[Proxy Download] Lỗi từ máy chủ gốc: HTTP ${response.status}`);
-        return res
-          .status(response.status)
-          .json({ error: `Không thể tải tệp từ nguồn từ xa (${response.status})` });
+      if (!response || !response.ok) {
+        console.error(`[Proxy Download] Không thể tải video từ URL: ${rawUrl.slice(0, 80)}...`);
+        return res.status(404).json({ error: "Không thể tải tệp từ nguồn từ xa" });
       }
 
       const contentType =
@@ -2253,28 +2268,18 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
           ? "video/webm"
           : rawFilename.endsWith(".png")
           ? "image/png"
-          : rawFilename.endsWith(".jpg") || rawFilename.endsWith(".jpeg")
-          ? "image/jpeg"
           : "video/mp4");
 
       const contentLength = response.headers.get("content-length");
 
       res.setHeader("Content-Type", contentType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${rawFilename}"; filename*=UTF-8''${cleanFilename}`
+      );
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       res.setHeader("Accept-Ranges", "bytes");
-
-      if (isDownload) {
-        res.setHeader(
-          "Content-Disposition",
-          `attachment; filename="${rawFilename}"; filename*=UTF-8''${cleanFilename}`
-        );
-      } else {
-        res.setHeader(
-          "Content-Disposition",
-          `inline; filename="${rawFilename}"; filename*=UTF-8''${cleanFilename}`
-        );
-      }
 
       if (contentLength) {
         res.setHeader("Content-Length", contentLength);
