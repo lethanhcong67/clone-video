@@ -46,11 +46,10 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         {/* Title and Branding */}
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md ring-1 ring-black/5 ${
-            isGpt
-              ? 'bg-gradient-to-tr from-emerald-600 via-teal-600 to-cyan-600 shadow-emerald-100'
-              : 'bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 shadow-indigo-100'
-          }`}>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md ring-1 ring-black/5 ${isGpt
+            ? 'bg-gradient-to-tr from-emerald-600 via-teal-600 to-cyan-600 shadow-emerald-100'
+            : 'bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 shadow-indigo-100'
+            }`}>
             {isGpt ? (
               <Wand2 className="w-5 h-5 animate-pulse" />
             ) : (
@@ -60,13 +59,12 @@ export const Header: React.FC<HeaderProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
-                AI Character & Outfit Swapper
+                CLONE VIDEO V1.0
               </h1>
-              <span className={`hidden md:inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                isGpt
-                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                  : 'text-indigo-700 bg-indigo-50 border-indigo-200'
-              }`}>
+              <span className={`hidden md:inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${isGpt
+                ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                : 'text-indigo-700 bg-indigo-50 border-indigo-200'
+                }`}>
                 {activeModelName}
               </span>
             </div>
@@ -83,15 +81,14 @@ export const Header: React.FC<HeaderProps> = ({
             id="header-api-key-btn"
             type="button"
             onClick={onOpenApiSettings}
-            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all active:scale-95 ${
-              isCustomActive
-                ? isGpt
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                  : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
-                : isSystemReady
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all active:scale-95 ${isCustomActive
+              ? isGpt
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+              : isSystemReady
                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                 : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-            }`}
+              }`}
             title="Cấu hình API Key & Động cơ tạo ảnh"
           >
             {isCustomActive ? (
@@ -103,8 +100,8 @@ export const Header: React.FC<HeaderProps> = ({
               {isCustomActive
                 ? `${isGpt ? 'GPT-Image-2' : 'Gemini'}: Khóa riêng`
                 : isSystemReady
-                ? 'Khóa hệ thống'
-                : 'Cấu hình API Key'}
+                  ? 'Khóa hệ thống'
+                  : 'Cấu hình API Key'}
             </span>
           </button>
 
@@ -114,11 +111,10 @@ export const Header: React.FC<HeaderProps> = ({
               id="header-view-log-btn"
               type="button"
               onClick={onOpenLogModal}
-              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition-all active:scale-95 ${
-                hasApiLog
-                  ? 'bg-stone-900 text-emerald-400 border-stone-700 hover:bg-stone-800 shadow-xs'
-                  : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200/80'
-              }`}
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition-all active:scale-95 ${hasApiLog
+                ? 'bg-stone-900 text-emerald-400 border-stone-700 hover:bg-stone-800 shadow-xs'
+                : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200/80'
+                }`}
               title="Xem toàn bộ Body và Prompt đã gửi đến API tạo ảnh"
             >
               <Terminal className={`w-3.5 h-3.5 ${hasApiLog ? 'text-emerald-400' : 'text-stone-500'}`} />
