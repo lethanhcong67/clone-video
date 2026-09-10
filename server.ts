@@ -2215,11 +2215,12 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
     }
   });
 
-  // Proxy download endpoint to safely stream media files without opening tabs or cross-origin navigation
+  // Proxy download endpoint to safely stream media files and handle native browser downloads
   app.get("/api/proxy/download", async (req, res) => {
     try {
       const fileUrl = req.query.url as string;
       let rawFilename = (req.query.filename as string) || "video.mp4";
+      const isDownload = req.query.download !== "0";
 
       // Ensure proper extension
       if (!rawFilename.includes(".")) {
@@ -2234,8 +2235,6 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
 
       // Handle unencoded spaces in URL path while preserving query signature
       const safeUrl = fileUrl.includes(" ") ? encodeURI(fileUrl) : fileUrl;
-
-      console.log(`[Proxy Download] Đang chuyển tiếp tải tệp: ${safeUrl.slice(0, 100)}... -> ${rawFilename}`);
 
       const response = await fetch(safeUrl);
 
@@ -2261,13 +2260,22 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
       const contentLength = response.headers.get("content-length");
 
       res.setHeader("Content-Type", contentType);
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${rawFilename}"; filename*=UTF-8''${cleanFilename}`
-      );
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Accept-Ranges", "bytes");
+
+      if (isDownload) {
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${rawFilename}"; filename*=UTF-8''${cleanFilename}`
+        );
+      } else {
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="${rawFilename}"; filename*=UTF-8''${cleanFilename}`
+        );
+      }
+
       if (contentLength) {
         res.setHeader("Content-Length", contentLength);
       }

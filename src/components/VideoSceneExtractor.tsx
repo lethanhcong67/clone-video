@@ -467,7 +467,6 @@ export const VideoSceneExtractor: React.FC<VideoSceneExtractorProps> = ({
                       src={videoUrl}
                       className="max-h-[260px] w-full object-contain"
                       controls
-                      controlsList="nodownload"
                       playsInline
                     />
                   </div>
