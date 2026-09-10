@@ -22,6 +22,9 @@ import {
   Smartphone,
   Monitor,
   Plus,
+  Copy,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import {
   extractVideoFrames,
@@ -30,6 +33,7 @@ import {
   VideoMetadata,
   formatTime,
 } from '../utils/videoExtractor';
+import { analyzeVideoPrompts } from '../utils/videoPromptAnalyzer';
 import { BatchImageItem } from '../types';
 
 interface VideoSceneExtractorProps {
@@ -72,6 +76,12 @@ export const VideoSceneExtractor: React.FC<VideoSceneExtractorProps> = ({
   const [zoomScale, setZoomScale] = useState<number>(1);
   const [addedFrameIds, setAddedFrameIds] = useState<Set<string>>(new Set());
 
+  // Video Prompt Analysis State (Phân tích chuyển động video thành prompt tiếng Việt)
+  const [isAnalyzingVideo, setIsAnalyzingVideo] = useState(false);
+  const [videoPrompts, setVideoPrompts] = useState<string[]>([]);
+  const [copiedPromptIndex, setCopiedPromptIndex] = useState<number | null>(null);
+  const [copiedAllPrompts, setCopiedAllPrompts] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Clean up object URL on unmount or file change
@@ -82,6 +92,58 @@ export const VideoSceneExtractor: React.FC<VideoSceneExtractorProps> = ({
       }
     };
   }, [videoUrl]);
+
+  // Handler: Phân tích video thành danh sách prompt tiếng Việt qua Gemini 3.5 Flash
+  const handleAnalyzePrompts = async () => {
+    if (!videoFile) {
+      showToast('Vui lòng tải video lên trước khi phân tích.', 'warning');
+      return;
+    }
+
+    setIsAnalyzingVideo(true);
+    try {
+      showToast('Đang quét chuyển động video qua Gemini 3.5 Flash...', 'info');
+      const res = await analyzeVideoPrompts({
+        videoFile,
+        extractedFrames: extractedFrames.length > 0 ? extractedFrames : undefined,
+      });
+
+      if (res.success && res.prompts.length > 0) {
+        setVideoPrompts(res.prompts);
+        showToast(`Đã phân tích thành công ${res.prompts.length} câu prompt chuyển động tiếng Việt!`, 'success');
+      } else {
+        showToast('Không nhận được prompt nào từ AI. Vui lòng thử lại.', 'warning');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Lỗi khi phân tích prompt video qua AI.', 'warning');
+    } finally {
+      setIsAnalyzingVideo(false);
+    }
+  };
+
+  const handleCopyPrompt = (promptText: string, index: number) => {
+    navigator.clipboard.writeText(promptText);
+    setCopiedPromptIndex(index);
+    showToast('Đã sao chép prompt vào bộ nhớ tạm!', 'success');
+    setTimeout(() => {
+      setCopiedPromptIndex(null);
+    }, 2000);
+  };
+
+  const handleCopyAllPrompts = () => {
+    if (videoPrompts.length === 0) return;
+    const allText = videoPrompts.join('\n\n');
+    navigator.clipboard.writeText(allText);
+    setCopiedAllPrompts(true);
+    showToast(`Đã sao chép toàn bộ ${videoPrompts.length} câu prompt!`, 'success');
+    setTimeout(() => {
+      setCopiedAllPrompts(false);
+    }, 2000);
+  };
+
+  const handleClearPrompts = () => {
+    setVideoPrompts([]);
+  };
 
   // Handle Video File Selection
   const handleSelectFile = async (file: File) => {
@@ -616,49 +678,188 @@ export const VideoSceneExtractor: React.FC<VideoSceneExtractorProps> = ({
                 </div>
               )}
 
-              {/* Action Button: Start Extracting */}
-              {!isExtracting ? (
+              {/* Action Buttons: Analyze Video Prompts & Start Extracting */}
+              <div className="space-y-2 pt-1">
+                {/* Button: Phân tích Video tạo danh sách Prompt tiếng Việt */}
                 <button
                   type="button"
-                  onClick={handleStartExtraction}
-                  disabled={!videoFile}
-                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all ${
-                    videoFile
-                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-indigo-200/50 hover:shadow-md cursor-pointer'
-                      : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                  onClick={handleAnalyzePrompts}
+                  disabled={!videoFile || isAnalyzingVideo || isExtracting}
+                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer ${
+                    !videoFile || isAnalyzingVideo || isExtracting
+                      ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white shadow-indigo-200 hover:shadow-md'
                   }`}
                 >
-                  <Scissors className="w-4 h-4" />
-                  <span>Bắt đầu cắt ảnh tỉ lệ {targetRatio}</span>
+                  {isAnalyzingVideo ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Đang phân tích video qua Gemini 3.5 Flash...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      <span>Phân tích video (Prompt Tiếng Việt)</span>
+                    </>
+                  )}
                 </button>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span className="text-indigo-700 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-indigo-600 animate-ping inline-block" />
-                      Đang cắt phân cảnh: {progress}%
-                    </span>
-                    <span className="text-stone-500">Đã cắt: {progressInfo.count} ảnh</span>
-                  </div>
 
-                  <div className="w-full bg-stone-200 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-2 rounded-full transition-all duration-200"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-
+                {/* Button: Bắt đầu cắt ảnh */}
+                {!isExtracting ? (
                   <button
                     type="button"
-                    onClick={handleCancelExtraction}
-                    className="w-full py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                    onClick={handleStartExtraction}
+                    disabled={!videoFile || isAnalyzingVideo}
+                    className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all ${
+                      videoFile && !isAnalyzingVideo
+                        ? 'bg-stone-800 hover:bg-stone-900 text-white hover:shadow-stone-300 hover:shadow-md cursor-pointer'
+                        : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                    }`}
                   >
-                    Dừng / Hủy cắt
+                    <Scissors className="w-4 h-4" />
+                    <span>Bắt đầu cắt ảnh tỉ lệ {targetRatio}</span>
                   </button>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-semibold">
+                      <span className="text-indigo-700 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-indigo-600 animate-ping inline-block" />
+                        Đang cắt phân cảnh: {progress}%
+                      </span>
+                      <span className="text-stone-500">Đã cắt: {progressInfo.count} ảnh</span>
+                    </div>
+
+                    <div className="w-full bg-stone-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-2 rounded-full transition-all duration-200"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleCancelExtraction}
+                      className="w-full py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                    >
+                      Dừng / Hủy cắt
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Video Prompts List Section (Danh sách Prompt Video Tiếng Việt) */}
+          {(isAnalyzingVideo || videoPrompts.length > 0) && (
+            <div className="bg-gradient-to-br from-indigo-50/80 via-purple-50/40 to-white rounded-2xl border border-indigo-200/90 p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-indigo-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white shadow-sm">
+                    <Sparkles className="w-5 h-5 text-amber-200" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-bold text-stone-900">
+                        Danh sách Prompt Video Tiếng Việt
+                      </h3>
+                      {videoPrompts.length > 0 && (
+                        <span className="px-2.5 py-0.5 text-[11px] font-bold bg-indigo-100 text-indigo-700 rounded-full border border-indigo-200">
+                          {videoPrompts.length} câu prompt chuyển động
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
+                        Gemini 3.5 Flash
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      Mô tả chi tiết hành động nhân vật và góc máy camera cho từng phân cảnh trong video
+                    </p>
+                  </div>
+                </div>
+
+                {videoPrompts.length > 0 && !isAnalyzingVideo && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyAllPrompts}
+                      className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {copiedAllPrompts ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Đã sao chép tất cả!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Sao chép tất cả ({videoPrompts.length})</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleClearPrompts}
+                      className="p-1.5 text-stone-400 hover:text-stone-600 hover:bg-stone-200/60 rounded-lg transition-colors cursor-pointer"
+                      title="Đóng danh sách"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {isAnalyzingVideo ? (
+                <div className="py-8 text-center space-y-3">
+                  <div className="w-10 h-10 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-sm font-semibold text-indigo-950">
+                    Đang phân tích các phân cảnh và chuyển động qua Gemini 3.5 Flash...
+                  </p>
+                  <p className="text-xs text-stone-500">
+                    AI đang trích xuất keyframes và mô tả chi tiết chuyển động nhân vật cùng góc máy
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {videoPrompts.map((promptText, idx) => (
+                    <div
+                      key={idx}
+                      className="group bg-white/95 hover:bg-white rounded-xl p-3.5 border border-indigo-100 hover:border-indigo-300 shadow-xs hover:shadow transition-all flex items-start justify-between gap-3"
+                    >
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-indigo-500 mt-2 shrink-0 group-hover:scale-125 transition-transform" />
+                        <p className="text-xs sm:text-sm text-stone-800 leading-relaxed select-text font-normal">
+                          {promptText}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCopyPrompt(promptText, idx)}
+                        className={`shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          copiedPromptIndex === idx
+                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                            : 'bg-stone-50 hover:bg-indigo-50 text-stone-700 hover:text-indigo-600 border border-stone-200 hover:border-indigo-200'
+                        }`}
+                      >
+                        {copiedPromptIndex === idx ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Đã sao chép</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Sao chép</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-          </div>
+          )}
 
           {/* Staging Gallery: Preview all extracted frames before adding to batch */}
           {extractedFrames.length > 0 && (
