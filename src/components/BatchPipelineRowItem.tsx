@@ -1058,21 +1058,6 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                       playsInline
                       className="w-full h-full object-contain"
                     />
-                    <div className="absolute top-2 right-2 z-20">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleDownloadVideo(item.videoUrl!, item.name);
-                        }}
-                        className="px-2 py-1 rounded-lg bg-black/80 hover:bg-violet-600 text-white transition-all shadow-md cursor-pointer flex items-center gap-1.5 backdrop-blur-xs"
-                        title="Tải video MP4 chất lượng cao"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span className="text-[11px] font-semibold">Tải video</span>
-                      </button>
-                    </div>
                   </div>
 
                   {/* Optional prompt modification drawer when video already exists */}
