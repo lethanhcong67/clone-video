@@ -2219,23 +2219,28 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
   app.get("/api/proxy/download", async (req, res) => {
     try {
       const fileUrl = req.query.url as string;
-      const rawFilename = (req.query.filename as string) || "downloaded_media.mp4";
+      let rawFilename = (req.query.filename as string) || "video.mp4";
+
+      // Ensure proper extension
+      if (!rawFilename.includes(".")) {
+        rawFilename += ".mp4";
+      }
+
       const cleanFilename = encodeURIComponent(rawFilename);
 
       if (!fileUrl) {
         return res.status(400).json({ error: "Thiếu tham số URL tệp tải về" });
       }
 
-      // Fetch with browser-like headers to prevent 403 Forbidden from CDN anti-hotlinking
-      const response = await fetch(fileUrl, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-          Accept: "*/*",
-        },
-      });
+      // Handle unencoded spaces in URL path while preserving query signature
+      const safeUrl = fileUrl.includes(" ") ? encodeURI(fileUrl) : fileUrl;
+
+      console.log(`[Proxy Download] Đang chuyển tiếp tải tệp: ${safeUrl.slice(0, 100)}... -> ${rawFilename}`);
+
+      const response = await fetch(safeUrl);
 
       if (!response.ok) {
+        console.error(`[Proxy Download] Lỗi từ máy chủ gốc: HTTP ${response.status}`);
         return res
           .status(response.status)
           .json({ error: `Không thể tải tệp từ nguồn từ xa (${response.status})` });
@@ -2251,7 +2256,7 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
           ? "image/png"
           : rawFilename.endsWith(".jpg") || rawFilename.endsWith(".jpeg")
           ? "image/jpeg"
-          : "application/octet-stream");
+          : "video/mp4");
 
       const contentLength = response.headers.get("content-length");
 
@@ -2262,14 +2267,16 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
       );
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Cache-Control", "no-cache");
       if (contentLength) {
         res.setHeader("Content-Length", contentLength);
       }
 
       const arrayBuffer = await response.arrayBuffer();
-      return res.send(Buffer.from(arrayBuffer));
+      const buffer = Buffer.from(arrayBuffer);
+      return res.end(buffer);
     } catch (error: any) {
-      console.error("Lỗi proxy download:", error);
+      console.error("[Proxy Download] Lỗi exception:", error);
       return res.status(500).json({ error: error?.message || "Lỗi khi tải tệp qua proxy download" });
     }
   });

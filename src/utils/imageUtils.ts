@@ -26,32 +26,50 @@ export function getImageDimensions(dataUrl: string): Promise<{ width: number; he
 export async function downloadMediaFile(url: string, filename: string): Promise<void> {
   if (!url) return;
 
+  // Ensure file has appropriate extension
+  let safeFilename = filename;
+  if (!safeFilename.includes('.')) {
+    if (url.includes('.mp4') || url.includes('/kling') || url.includes('cos.ap-guangzhou')) {
+      safeFilename += '.mp4';
+    } else if (url.includes('.webm') || url.startsWith('blob:')) {
+      safeFilename += '.webm';
+    } else {
+      safeFilename += '.png';
+    }
+  }
+
   // 1. Data URL or Blob URL: Download directly in browser memory
   if (url.startsWith('data:') || url.startsWith('blob:')) {
     const link = document.createElement('a');
     link.href = url;
-    link.download = filename;
+    link.download = safeFilename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     return;
   }
 
-  // 2. Try proxy download endpoint first (Bypasses all CDN CORS blocks & prevents console red errors)
+  // 2. Try proxy download endpoint first (Bypasses all CDN CORS blocks & avoids console errors)
   try {
-    const proxyUrl = `/api/proxy/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+    const proxyUrl = `/api/proxy/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(safeFilename)}`;
     const res = await fetch(proxyUrl);
     if (res.ok) {
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 25000);
-      return;
+      const contentType = res.headers.get('content-type') || '';
+      // Ensure it's not a JSON error response
+      if (!contentType.includes('application/json')) {
+        const blob = await res.blob();
+        if (blob.size > 200) {
+          const blobUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = safeFilename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 25000);
+          return;
+        }
+      }
     }
   } catch (proxyErr) {
     console.warn('Proxy download failed, trying client fetch:', proxyErr);
@@ -65,7 +83,7 @@ export async function downloadMediaFile(url: string, filename: string): Promise<
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = filename;
+      link.download = safeFilename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -76,12 +94,12 @@ export async function downloadMediaFile(url: string, filename: string): Promise<
     console.warn('Client-side blob download failed:', clientErr);
   }
 
-  // 4. Final Fallback: Use proxy download link with target="_blank" so user current work is never replaced
+  // 4. Final Fallback: Direct attachment link without navigating current page
   try {
-    const proxyUrl = `/api/proxy/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+    const proxyUrl = `/api/proxy/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(safeFilename)}`;
     const link = document.createElement('a');
     link.href = proxyUrl;
-    link.download = filename;
+    link.download = safeFilename;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     document.body.appendChild(link);
@@ -93,11 +111,21 @@ export async function downloadMediaFile(url: string, filename: string): Promise<
 }
 
 export function downloadImage(url: string, filename: string) {
-  downloadMediaFile(url, filename);
+  let name = filename;
+  if (!name.endsWith('.png') && !name.endsWith('.jpg') && !name.endsWith('.jpeg') && !name.endsWith('.webp')) {
+    name += '.png';
+  }
+  downloadMediaFile(url, name);
 }
 
 export function downloadVideo(url: string, filename: string) {
-  downloadMediaFile(url, filename);
+  let name = filename;
+  const isWebm = url.startsWith('blob:') && !url.includes('.mp4');
+  const ext = isWebm ? '.webm' : '.mp4';
+  if (!name.endsWith('.mp4') && !name.endsWith('.webm')) {
+    name += ext;
+  }
+  downloadMediaFile(url, name);
 }
 
 export async function downloadAllAsZip(
