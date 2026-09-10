@@ -37,38 +37,58 @@ export async function downloadMediaFile(url: string, filename: string): Promise<
     return;
   }
 
-  // 2. HTTP/HTTPS URL: Try client-side fetch to convert to Blob (100% preserves single page state)
+  // 2. Try proxy download endpoint first (Bypasses all CDN CORS blocks & prevents console red errors)
+  try {
+    const proxyUrl = `/api/proxy/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+    const res = await fetch(proxyUrl);
+    if (res.ok) {
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 25000);
+      return;
+    }
+  } catch (proxyErr) {
+    console.warn('Proxy download failed, trying client fetch:', proxyErr);
+  }
+
+  // 3. Fallback: Try direct client-side fetch (works if CDN has CORS headers enabled)
   try {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
+    if (res.ok) {
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 25000);
+      return;
+    }
+  } catch (clientErr) {
+    console.warn('Client-side blob download failed:', clientErr);
+  }
+
+  // 4. Final Fallback: Use proxy download link with target="_blank" so user current work is never replaced
+  try {
+    const proxyUrl = `/api/proxy/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
     const link = document.createElement('a');
-    link.href = blobUrl;
+    link.href = proxyUrl;
     link.download = filename;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 20000);
-    return;
-  } catch (clientErr) {
-    console.warn('Client-side blob download failed (likely CORS), falling back to backend proxy:', clientErr);
-  }
-
-  // 3. Backend Proxy Fallback: Streams attachment through server without leaving page
-  try {
-    const proxyUrl = `/api/proxy/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = proxyUrl;
-    document.body.appendChild(iframe);
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe);
-      }
-    }, 30000);
-  } catch (proxyErr) {
-    console.error('All download methods failed:', proxyErr);
+  } catch (err) {
+    console.error('All download methods failed:', err);
   }
 }
 

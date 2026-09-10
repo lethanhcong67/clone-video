@@ -2219,24 +2219,52 @@ CRITICAL TASK: Locate the corresponding product, item, prop, or worn garment in 
   app.get("/api/proxy/download", async (req, res) => {
     try {
       const fileUrl = req.query.url as string;
-      const rawFilename = (req.query.filename as string) || "downloaded_file";
+      const rawFilename = (req.query.filename as string) || "downloaded_media.mp4";
       const cleanFilename = encodeURIComponent(rawFilename);
 
       if (!fileUrl) {
         return res.status(400).json({ error: "Thiếu tham số URL tệp tải về" });
       }
 
-      const response = await fetch(fileUrl);
+      // Fetch with browser-like headers to prevent 403 Forbidden from CDN anti-hotlinking
+      const response = await fetch(fileUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          Accept: "*/*",
+        },
+      });
+
       if (!response.ok) {
-        return res.status(response.status).json({ error: `Không thể tải tệp từ nguồn từ xa (${response.status})` });
+        return res
+          .status(response.status)
+          .json({ error: `Không thể tải tệp từ nguồn từ xa (${response.status})` });
       }
 
-      const contentType = response.headers.get("content-type") || "application/octet-stream";
+      const contentType =
+        response.headers.get("content-type") ||
+        (rawFilename.endsWith(".mp4")
+          ? "video/mp4"
+          : rawFilename.endsWith(".webm")
+          ? "video/webm"
+          : rawFilename.endsWith(".png")
+          ? "image/png"
+          : rawFilename.endsWith(".jpg") || rawFilename.endsWith(".jpeg")
+          ? "image/jpeg"
+          : "application/octet-stream");
+
+      const contentLength = response.headers.get("content-length");
+
       res.setHeader("Content-Type", contentType);
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="${rawFilename}"; filename*=UTF-8''${cleanFilename}`
       );
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
 
       const arrayBuffer = await response.arrayBuffer();
       return res.send(Buffer.from(arrayBuffer));
