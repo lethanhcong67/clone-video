@@ -41,7 +41,7 @@ export const DEFAULT_KLING_PROMPT =
   'Người mẫu cử động tự nhiên, giữ cố định thiết kế sản phẩm và họa tiết trang phục, ánh sáng điện ảnh cao cấp, 4K';
 
 const DEFAULT_KLING_CONFIG: KlingVideoConfig = {
-  apiKey: 'sk-FKuIim2pal8dLHVXBJqig9AmgFbX8m0VM09XtUbfBdqAyI95',
+  apiKey: 'sk-L8zc8s3oiwytWv8TjurONzwhmHsuP5eBRtDqLDD0te1sWyIz',
   baseUrl: 'https://api.openlux.ai/kling/v1/videos/image2video',
   model: 'kling-v2-6',
   mode: 'pro',
@@ -443,7 +443,7 @@ export default function App() {
     }
 
     const effectiveApiKey = rawGptKey || rawGeminiKey;
-    
+
     // Resolve the exact, complete prompt for this specific row item (matches what is shown in the Prompt Modal)
     const rowFullPrompt = (item.customPrompt || item.appliedConfig?.customPrompt)?.trim()
       || generateFullPromptText(item, settings, uploadedOutfits, uploadedOutfit);
@@ -632,13 +632,13 @@ export default function App() {
             prev.map((it) =>
               it.id === currentItem.id
                 ? {
-                    ...it,
-                    status: 'completed',
-                    progress: 100,
-                    resultImageUrl: resultUrl,
-                    resultImageUrls: [resultUrl],
-                    activeResultIndex: 0,
-                  }
+                  ...it,
+                  status: 'completed',
+                  progress: 100,
+                  resultImageUrl: resultUrl,
+                  resultImageUrls: [resultUrl],
+                  activeResultIndex: 0,
+                }
                 : it
             )
           );
@@ -648,11 +648,11 @@ export default function App() {
               prev.map((it) =>
                 it.id === currentItem.id
                   ? {
-                      ...it,
-                      status: 'error',
-                      progress: 0,
-                      error: err?.message || 'Lỗi khi xử lý hình ảnh',
-                    }
+                    ...it,
+                    status: 'error',
+                    progress: 0,
+                    error: err?.message || 'Lỗi khi xử lý hình ảnh',
+                  }
                   : it
               )
             );
@@ -809,13 +809,12 @@ export default function App() {
       {notification && (
         <div
           id="toast-notification"
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-xl flex items-center gap-2.5 text-xs font-semibold text-white transition-all transform animate-in fade-in slide-in-from-top-2 ${
-            notification.type === 'success'
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-xl flex items-center gap-2.5 text-xs font-semibold text-white transition-all transform animate-in fade-in slide-in-from-top-2 ${notification.type === 'success'
               ? 'bg-emerald-600'
               : notification.type === 'warning'
-              ? 'bg-amber-600'
-              : 'bg-indigo-600'
-          }`}
+                ? 'bg-amber-600'
+                : 'bg-indigo-600'
+            }`}
         >
           {notification.type === 'success' ? (
             <CheckCircle2 className="w-4 h-4" />

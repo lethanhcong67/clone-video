@@ -202,7 +202,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
   const [showGptKey, setShowGptKey] = useState(false);
 
   // Kling Video state
-  const [klingKey, setKlingKey] = useState(config.kling?.apiKey || 'sk-FKuIim2pal8dLHVXBJqig9AmgFbX8m0VM09XtUbfBdqAyI95');
+  const [klingKey, setKlingKey] = useState(config.kling?.apiKey || 'sk-L8zc8s3oiwytWv8TjurONzwhmHsuP5eBRtDqLDD0te1sWyIz');
   const [klingAccessKey, setKlingAccessKey] = useState(config.kling?.accessKey || '');
   const [klingSecretKey, setKlingSecretKey] = useState(config.kling?.secretKey || '');
   const [klingBaseUrl, setKlingBaseUrl] = useState(
@@ -640,8 +640,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               setActiveProvider('gpt-image-2');
             }}
             className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'gpt-image-2'
-                ? 'bg-white text-emerald-700 shadow-xs border border-stone-200'
-                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
+              ? 'bg-white text-emerald-700 shadow-xs border border-stone-200'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
               }`}
           >
             <Wand2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -659,8 +659,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               setActiveProvider('gemini');
             }}
             className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'gemini'
-                ? 'bg-white text-indigo-700 shadow-xs border border-stone-200'
-                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
+              ? 'bg-white text-indigo-700 shadow-xs border border-stone-200'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
               }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
@@ -675,8 +675,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
             id="tab-kling-video-provider"
             onClick={() => setActiveTab('kling')}
             className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'kling'
-                ? 'bg-white text-violet-700 shadow-xs border border-stone-200'
-                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
+              ? 'bg-white text-violet-700 shadow-xs border border-stone-200'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
               }`}
           >
             <Video className="w-3.5 h-3.5 text-violet-600 shrink-0" />
@@ -779,22 +779,20 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setGeminiBaseUrl('https://api.openlux.ai/v1beta/models/gemini-3.5-flash:generateContent')}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${
-                        geminiBaseUrl.includes('openlux.ai')
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${geminiBaseUrl.includes('openlux.ai')
                           ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
                           : 'text-stone-500 hover:text-indigo-700 underline'
-                      }`}
+                        }`}
                     >
                       OpenLux Gemini
                     </button>
                     <button
                       type="button"
                       onClick={() => setGeminiBaseUrl('https://generativelanguage.googleapis.com')}
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${
-                        geminiBaseUrl.includes('googleapis.com')
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${geminiBaseUrl.includes('googleapis.com')
                           ? 'bg-stone-200 text-stone-800'
                           : 'text-stone-500 hover:text-stone-800 underline'
-                      }`}
+                        }`}
                     >
                       Google Gốc
                     </button>
@@ -863,8 +861,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                 <div
                   id="test-gemini-feedback"
                   className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${geminiTestResult.success
-                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                      : 'bg-rose-50 border border-rose-200 text-rose-800'
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border border-rose-200 text-rose-800'
                     }`}
                 >
                   {geminiTestResult.success ? (
@@ -953,8 +951,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       type="button"
                       onClick={() => setGptBaseUrl('https://api.openlux.ai/v1/images/edits')}
                       className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${gptBaseUrl.includes('openlux.ai')
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                          : 'text-stone-500 hover:text-emerald-700 underline'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'text-stone-500 hover:text-emerald-700 underline'
                         }`}
                     >
                       OpenLux AI
@@ -963,8 +961,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       type="button"
                       onClick={() => setGptBaseUrl('https://api.openai.com/v1')}
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${gptBaseUrl.includes('openai.com')
-                          ? 'bg-stone-200 text-stone-800'
-                          : 'text-stone-500 hover:text-stone-800 underline'
+                        ? 'bg-stone-200 text-stone-800'
+                        : 'text-stone-500 hover:text-stone-800 underline'
                         }`}
                     >
                       OpenAI Gốc
@@ -1025,8 +1023,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                         type="button"
                         onClick={() => setGptSize(preset.value)}
                         className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-all cursor-pointer ${gptSize === preset.value
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                            : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
                           }`}
                       >
                         {preset.label}
@@ -1054,8 +1052,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       type="button"
                       onClick={() => setGptQuality('medium')}
                       className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${gptQuality === 'medium'
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'text-stone-600 hover:text-stone-900'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-stone-600 hover:text-stone-900'
                         }`}
                     >
                       Medium (Mặc định)
@@ -1064,8 +1062,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       type="button"
                       onClick={() => setGptQuality('standard')}
                       className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${gptQuality === 'standard'
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'text-stone-600 hover:text-stone-900'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-stone-600 hover:text-stone-900'
                         }`}
                     >
                       Standard
@@ -1074,8 +1072,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       type="button"
                       onClick={() => setGptQuality('hd')}
                       className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${gptQuality === 'hd'
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'text-stone-600 hover:text-stone-900'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-stone-600 hover:text-stone-900'
                         }`}
                     >
                       HD
@@ -1117,8 +1115,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                 <div
                   id="test-gpt-feedback"
                   className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${gptTestResult.success
-                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                      : 'bg-rose-50 border border-rose-200 text-rose-800'
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border border-rose-200 text-rose-800'
                     }`}
                 >
                   {gptTestResult.success ? (
@@ -1264,8 +1262,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       type="button"
                       onClick={() => setKlingBaseUrl('https://api.openlux.ai/kling/v1/videos/image2video')}
                       className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${klingBaseUrl.includes('openlux.ai')
-                          ? 'bg-violet-100 text-violet-800 border border-violet-300'
-                          : 'text-stone-500 hover:text-violet-700 underline'
+                        ? 'bg-violet-100 text-violet-800 border border-violet-300'
+                        : 'text-stone-500 hover:text-violet-700 underline'
                         }`}
                     >
                       OpenLux AI
@@ -1274,8 +1272,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       type="button"
                       onClick={() => setKlingBaseUrl('https://api.klingai.com')}
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${klingBaseUrl === 'https://api.klingai.com'
-                          ? 'bg-stone-200 text-stone-800'
-                          : 'text-stone-500 hover:text-stone-800 underline'
+                        ? 'bg-stone-200 text-stone-800'
+                        : 'text-stone-500 hover:text-stone-800 underline'
                         }`}
                     >
                       api.klingai.com
@@ -1284,8 +1282,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       type="button"
                       onClick={() => setKlingBaseUrl('https://api-singapore.klingai.com')}
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${klingBaseUrl.includes('singapore')
-                          ? 'bg-stone-200 text-stone-800'
-                          : 'text-stone-500 hover:text-stone-800 underline'
+                        ? 'bg-stone-200 text-stone-800'
+                        : 'text-stone-500 hover:text-stone-800 underline'
                         }`}
                     >
                       Singapore
@@ -1333,8 +1331,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                         type="button"
                         onClick={() => setKlingMode('std')}
                         className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${klingMode === 'std'
-                            ? 'bg-violet-600 text-white shadow-2xs'
-                            : 'text-stone-600 hover:text-stone-900'
+                          ? 'bg-violet-600 text-white shadow-2xs'
+                          : 'text-stone-600 hover:text-stone-900'
                           }`}
                       >
                         Standard
@@ -1343,8 +1341,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                         type="button"
                         onClick={() => setKlingMode('pro')}
                         className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${klingMode === 'pro'
-                            ? 'bg-violet-600 text-white shadow-2xs'
-                            : 'text-stone-600 hover:text-stone-900'
+                          ? 'bg-violet-600 text-white shadow-2xs'
+                          : 'text-stone-600 hover:text-stone-900'
                           }`}
                       >
                         Pro
@@ -1359,8 +1357,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                         type="button"
                         onClick={() => setKlingDuration('5')}
                         className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${klingDuration === '5'
-                            ? 'bg-violet-600 text-white shadow-2xs'
-                            : 'text-stone-600 hover:text-stone-900'
+                          ? 'bg-violet-600 text-white shadow-2xs'
+                          : 'text-stone-600 hover:text-stone-900'
                           }`}
                       >
                         5 giây
@@ -1369,8 +1367,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                         type="button"
                         onClick={() => setKlingDuration('10')}
                         className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${klingDuration === '10'
-                            ? 'bg-violet-600 text-white shadow-2xs'
-                            : 'text-stone-600 hover:text-stone-900'
+                          ? 'bg-violet-600 text-white shadow-2xs'
+                          : 'text-stone-600 hover:text-stone-900'
                           }`}
                       >
                         10 giây
@@ -1392,8 +1390,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                           type="button"
                           onClick={() => setKlingAspectRatio(ratio)}
                           className={`px-2 py-1 rounded-md text-xs font-bold transition-all ${klingAspectRatio === ratio
-                              ? 'bg-violet-600 text-white shadow-2xs'
-                              : 'text-stone-600 hover:text-stone-900'
+                            ? 'bg-violet-600 text-white shadow-2xs'
+                            : 'text-stone-600 hover:text-stone-900'
                             }`}
                         >
                           {ratio}
@@ -1431,8 +1429,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       type="button"
                       onClick={() => setKlingMultiShot(!klingMultiShot)}
                       className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${klingMultiShot
-                          ? 'bg-violet-600 text-white shadow-2xs'
-                          : 'bg-stone-200 text-stone-700 hover:bg-stone-300'
+                        ? 'bg-violet-600 text-white shadow-2xs'
+                        : 'bg-stone-200 text-stone-700 hover:bg-stone-300'
                         }`}
                     >
                       {klingMultiShot ? 'BẬT' : 'TẮT'}
@@ -1445,8 +1443,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                       type="button"
                       onClick={() => setKlingWatermark(!klingWatermark)}
                       className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${klingWatermark
-                          ? 'bg-violet-600 text-white shadow-2xs'
-                          : 'bg-stone-200 text-stone-700 hover:bg-stone-300'
+                        ? 'bg-violet-600 text-white shadow-2xs'
+                        : 'bg-stone-200 text-stone-700 hover:bg-stone-300'
                         }`}
                     >
                       {klingWatermark ? 'BẬT' : 'TẮT'}
@@ -1522,8 +1520,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                 <div
                   id="test-kling-feedback"
                   className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${klingTestResult.success
-                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                      : 'bg-rose-50 border border-rose-200 text-rose-800'
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border border-rose-200 text-rose-800'
                     }`}
                 >
                   {klingTestResult.success ? (
@@ -1556,10 +1554,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
             type="button"
             onClick={handleSave}
             className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-all active:scale-95 cursor-pointer ${activeTab === 'kling'
-                ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-200'
-                : activeProvider === 'gpt-image-2'
-                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
-                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+              ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-200'
+              : activeProvider === 'gpt-image-2'
+                ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
               }`}
           >
             {activeTab === 'kling'

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, UploadCloud, Shirt, User, Subtitles, Sparkles } from 'lucide-react';
+import { X, Video, Shirt, User, Subtitles, Sparkles, Film, Lightbulb, CheckCircle2 } from 'lucide-react';
 
 interface GuideModalProps {
   isOpen: boolean;
@@ -17,98 +17,165 @@ export const GuideModal: React.FC<GuideModalProps> = ({ isOpen, onClose }) => {
     >
       <div
         id="guide-modal-content"
-        className="bg-white rounded-2xl max-w-2xl w-full border border-stone-200 shadow-2xl p-6 relative"
+        className="bg-white rounded-2xl max-w-2xl w-full border border-stone-200 shadow-2xl p-6 sm:p-7 relative my-6"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Close button */}
         <button
           type="button"
           onClick={onClose}
           className="absolute top-4 right-4 w-8 h-8 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 flex items-center justify-center transition-colors"
+          title="Đóng"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <Sparkles className="w-5 h-5" />
+        {/* Modal Header */}
+        <div className="flex items-center gap-3.5 mb-5">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 text-white flex items-center justify-center shadow-md shadow-indigo-100 ring-1 ring-black/5">
+            <Sparkles className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-stone-900">
-              Hướng dẫn Thay thế Nhân vật, Trang phục & Xóa phụ đề
+            <h3 className="text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+              Hướng dẫn Quy trình CLONE VIDEO V1.0
             </h3>
-            <p className="text-xs text-stone-500">
-              Quy trình 4 bước đơn giản để tạo ra bộ ảnh mới chất lượng cao
+            <p className="text-xs sm:text-sm text-stone-500">
+              Quy trình 5 bước tối ưu từ Video mẫu đến Bộ ảnh & Video mới chất lượng cao
             </p>
           </div>
         </div>
 
-        <div className="space-y-4 my-4 text-xs sm:text-sm text-stone-700">
-          <div className="flex items-start gap-3 p-3 rounded-xl bg-stone-50 border border-stone-200">
-            <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 font-bold text-xs">
-              1
-            </div>
-            <div>
-              <h4 className="font-bold text-stone-900 mb-0.5 flex items-center gap-1.5">
-                <UploadCloud className="w-4 h-4 text-indigo-600" />
-                Tải lên hàng loạt ảnh cần sửa
+        {/* Steps List */}
+        <div className="space-y-4 my-5 text-xs sm:text-sm text-stone-700 max-h-[62vh] overflow-y-auto pr-1">
+          {/* Step 1 */}
+          <div className="p-3.5 sm:p-4 rounded-xl bg-stone-50/90 border border-stone-200 hover:border-indigo-300 transition-colors">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                1
+              </div>
+              <h4 className="font-bold text-stone-900 text-sm flex items-center gap-1.5">
+                <Video className="w-4 h-4 text-indigo-600" />
+                Trích xuất Frame & Phân tích Prompt từ Video mẫu
               </h4>
-              <p className="text-xs text-stone-600">
-                Kéo thả nhiều ảnh cùng lúc từ thiết bị của bạn. Ứng dụng sẽ xếp hàng các ảnh vào danh sách đợi để xử lý tuần tự.
-              </p>
             </div>
+            <ul className="space-y-1.5 ml-8 text-xs text-stone-600 list-disc list-outside">
+              <li>
+                <b>Tải lên video mẫu:</b> Hỗ trợ tệp <code>.mp4</code>, <code>.mov</code> hoặc kéo thả danh sách ảnh gốc trực tiếp từ máy tính.
+              </li>
+              <li>
+                <b>Cắt khung hình tự động:</b> AI quét và trích xuất các khung hình sắc nét theo từng phân cảnh chuẩn.
+              </li>
+              <li>
+                <b>Phân tích chuyển động AI:</b> Động cơ <i>Gemini Flash</i> tự động quan sát video và tạo câu lệnh Prompt hành động tiếng Việt cho từng phân cảnh.
+              </li>
+            </ul>
           </div>
 
-          <div className="flex items-start gap-3 p-3 rounded-xl bg-stone-50 border border-stone-200">
-            <div className="w-7 h-7 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center shrink-0 font-bold text-xs">
-              2
-            </div>
-            <div>
-              <h4 className="font-bold text-stone-900 mb-0.5 flex items-center gap-1.5">
+          {/* Step 2 */}
+          <div className="p-3.5 sm:p-4 rounded-xl bg-stone-50/90 border border-stone-200 hover:border-violet-300 transition-colors">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-6 h-6 rounded-lg bg-violet-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                2
+              </div>
+              <h4 className="font-bold text-stone-900 text-sm flex items-center gap-1.5">
                 <User className="w-4 h-4 text-violet-600" />
-                Nhập nhân vật muốn thay thế
+                Nhập Nhân vật mới & Thiết lập Dáng điệu
               </h4>
-              <p className="text-xs text-stone-600">
-                Mô tả chi tiết nhân vật (tuổi tác, giới tính, nét mặt, kiểu tóc, phong cách). Bạn cũng có thể bật tùy chọn "Giữ nguyên dáng điệu gốc" để nhân vật mới có tư thế đồng bộ với ảnh ban đầu.
-              </p>
             </div>
+            <ul className="space-y-1.5 ml-8 text-xs text-stone-600 list-disc list-outside">
+              <li>
+                <b>Mô tả nhân vật:</b> Nhập độ tuổi, giới tính, nét mặt, kiểu tóc và phong cách (ví dụ: <i>Nữ người mẫu Việt Nam 24 tuổi, tóc dài đen, trang điểm nhẹ nhàng</i>).
+              </li>
+              <li>
+                <b>Giữ nguyên dáng điệu gốc:</b> Bật tùy chọn này để nhân vật mới có dáng đứng, cử chỉ tay và góc nhìn khớp hoàn toàn với video ban đầu.
+              </li>
+            </ul>
           </div>
 
-          <div className="flex items-start gap-3 p-3 rounded-xl bg-stone-50 border border-stone-200">
-            <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-xs">
-              3
-            </div>
-            <div>
-              <h4 className="font-bold text-stone-900 mb-0.5 flex items-center gap-1.5">
+          {/* Step 3 */}
+          <div className="p-3.5 sm:p-4 rounded-xl bg-stone-50/90 border border-stone-200 hover:border-emerald-300 transition-colors">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                3
+              </div>
+              <h4 className="font-bold text-stone-900 text-sm flex items-center gap-1.5">
                 <Shirt className="w-4 h-4 text-emerald-600" />
-                Tải lên hoặc mô tả trang phục cần đổi
+                Tải lên mẫu Trang phục / Sản phẩm cần đổi
               </h4>
-              <p className="text-xs text-stone-600">
-                Tải ảnh mẫu trang phục tham khảo thực tế hoặc nhập mô tả chi tiết bằng văn bản (màu sắc, chất liệu vải, kiểu dáng). AI sẽ phân tích và khoác trang phục mới vừa vặn lên nhân vật.
-              </p>
             </div>
+            <ul className="space-y-1.5 ml-8 text-xs text-stone-600 list-disc list-outside">
+              <li>
+                <b>Tải ảnh mẫu thực tế:</b> Đưa ảnh chụp bộ trang phục (váy, áo, vest...), phụ kiện hoặc sản phẩm bạn muốn quảng cáo vào hệ thống.
+              </li>
+              <li>
+                <b>Ghép đồ thông minh:</b> AI tự động phân tích chất liệu vải, màu sắc, hoa văn và mặc vừa vặn lên nhân vật mới trong từng khung hình.
+              </li>
+            </ul>
           </div>
 
-          <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
-            <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 font-bold text-xs">
-              4
-            </div>
-            <div>
-              <h4 className="font-bold text-stone-900 mb-0.5 flex items-center gap-1.5">
+          {/* Step 4 */}
+          <div className="p-3.5 sm:p-4 rounded-xl bg-stone-50/90 border border-stone-200 hover:border-amber-300 transition-colors">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-6 h-6 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                4
+              </div>
+              <h4 className="font-bold text-stone-900 text-sm flex items-center gap-1.5">
                 <Subtitles className="w-4 h-4 text-amber-600" />
-                Xóa phụ đề & Xuất file ZIP
+                Xóa sạch Phụ đề cũ & Tạo ảnh Hàng loạt (4K)
               </h4>
-              <p className="text-xs text-stone-600">
-                Bật tùy chọn "Xóa sạch phụ đề & chữ trong hình ảnh cũ". AI sẽ tự động inpaint phục hồi màu nền bên dưới dòng chữ phụ đề. Sau khi xong, bạn có thể kéo thanh so sánh Trước/Sau và tải toàn bộ ảnh dạng file .ZIP.
-              </p>
             </div>
+            <ul className="space-y-1.5 ml-8 text-xs text-stone-600 list-disc list-outside">
+              <li>
+                <b>Xóa phụ đề & Watermark:</b> Bật tính năng Inpaint để AI tự động xóa chữ, sub vietsub và phục hồi nền gốc mượt mà.
+              </li>
+              <li>
+                <b>Động cơ tạo ảnh:</b> Lựa chọn giữa <b>GPT-Image-2</b> hoặc <b>Gemini</b> để tạo ảnh độ nét cao chuẩn 4K.
+              </li>
+              <li>
+                <b>Xử lý đa luồng:</b> Bấm <b>"Xử lý tất cả"</b> để render hàng loạt ảnh tự động nhanh chóng hoặc chỉnh sửa riêng từng ảnh.
+              </li>
+            </ul>
+          </div>
+
+          {/* Step 5 */}
+          <div className="p-3.5 sm:p-4 rounded-xl bg-blue-50/80 border border-blue-200 hover:border-blue-400 transition-colors">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                5
+              </div>
+              <h4 className="font-bold text-stone-900 text-sm flex items-center gap-1.5">
+                <Film className="w-4 h-4 text-blue-600" />
+                Tạo Video Chuyển động (Kling AI) & Xuất file ZIP
+              </h4>
+            </div>
+            <ul className="space-y-1.5 ml-8 text-xs text-stone-600 list-disc list-outside">
+              <li>
+                <b>Tạo Video AI:</b> Bấm nút tạo video ở từng phân cảnh để Kling AI biến ảnh mới thành video chuyển động sinh động đúng theo prompt.
+              </li>
+              <li>
+                <b>So sánh Trước / Sau:</b> Kéo thanh trượt trực tiếp trên ảnh để đối chiếu kết quả trước khi tải.
+              </li>
+              <li>
+                <b>Tải toàn bộ file .ZIP:</b> Tải về trọn bộ ảnh kết quả chất lượng cao và danh sách video chỉ với 1 cú click.
+              </li>
+            </ul>
+          </div>
+
+          {/* Tip Box */}
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 text-amber-900">
+            <Lightbulb className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-[12px] leading-relaxed">
+              <b>Mẹo nhanh:</b> Nhấn nút <b>"Áp dụng cấu hình này cho tất cả"</b> ở thanh công cụ để đồng bộ nhân vật và trang phục cho toàn bộ danh sách phân cảnh chỉ trong 1 giây!
+            </p>
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end">
+        {/* Action Button */}
+        <div className="mt-5 pt-3 border-t border-stone-100 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs sm:text-sm font-bold text-white transition-colors cursor-pointer"
+            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-xs sm:text-sm font-bold text-white shadow-sm transition-all cursor-pointer text-center"
           >
             Đã hiểu, bắt đầu sử dụng
           </button>
@@ -117,3 +184,5 @@ export const GuideModal: React.FC<GuideModalProps> = ({ isOpen, onClose }) => {
     </div>
   );
 };
+
+
