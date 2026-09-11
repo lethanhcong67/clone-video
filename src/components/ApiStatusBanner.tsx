@@ -100,21 +100,6 @@ export const ApiStatusBanner: React.FC<ApiStatusBannerProps> = ({
             </span>
           </div>
 
-          <p className="text-xs text-stone-500 mt-0.5">
-            {isGptActive ? (
-              isUsingCustomGpt
-                ? `Đang áp dụng mô hình ${currentModel} với API Key cá nhân (${config.gptImage?.apiKey.slice(0, 6)}...${config.gptImage?.apiKey.slice(-4)}) cho mọi yêu cầu tạo/sửa ảnh.`
-                : isGptReady
-                ? `Đang dùng khóa hệ thống OpenAI cho mô hình ${currentModel}.`
-                : 'Đang chọn động cơ GPT-Image-2. Nhập OpenAI API Key riêng để bắt đầu tạo ảnh với mô hình này.'
-            ) : isUsingCustomGemini ? (
-              `Đang áp dụng mô hình ${currentModel} với Gemini API Key cá nhân (${config.apiKey.slice(0, 6)}...${config.apiKey.slice(-4)}).`
-            ) : isGeminiReady ? (
-              'Đang dùng khóa Gemini tích hợp sẵn. Bạn có thể thêm khóa riêng hoặc chuyển sang GPT-Image-2.'
-            ) : (
-              'Chưa phát hiện khóa API. Nhập API Key để kích hoạt tạo ảnh AI chất lượng cao đầy đủ.'
-            )}
-          </p>
         </div>
       </div>
 
