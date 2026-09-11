@@ -129,7 +129,7 @@ export async function extractVideoFrames(
   const {
     mode,
     intervalSeconds = 2,
-    sceneSensitivity = 'medium',
+    sceneSensitivity = 'high',
     targetAspectRatio = '9:16',
     maxFrames = 100,
     quality = 0.92,

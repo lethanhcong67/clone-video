@@ -58,7 +58,7 @@ export const VideoSceneExtractor: React.FC<VideoSceneExtractorProps> = ({
   const [mode, setMode] = useState<'interval' | 'scene'>('interval');
   const [intervalSeconds, setIntervalSeconds] = useState<number>(2);
   const [customInterval, setCustomInterval] = useState<string>('2');
-  const [sceneSensitivity, setSceneSensitivity] = useState<'low' | 'medium' | 'high'>('medium');
+  const [sceneSensitivity, setSceneSensitivity] = useState<'low' | 'medium' | 'high'>('high');
   const [targetRatio, setTargetRatio] = useState<'9:16' | '16:9' | 'original'>('9:16');
 
   // Extraction Progress State
@@ -598,7 +598,7 @@ export const VideoSceneExtractor: React.FC<VideoSceneExtractorProps> = ({
               </div>
 
               {/* Interval Mode Controls */}
-              {mode === 'interval' ? (
+              {mode === 'interval' && (
                 <div className="space-y-2.5 bg-white p-3 rounded-lg border border-stone-200">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium text-stone-700">Khoảng cách giữa các ảnh:</span>
@@ -643,37 +643,6 @@ export const VideoSceneExtractor: React.FC<VideoSceneExtractorProps> = ({
                       className="w-16 px-2 py-1 border border-stone-300 rounded text-center font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                     <span className="text-stone-500">giây / 1 phân cảnh</span>
-                  </div>
-                </div>
-              ) : (
-                /* Scene Detection Mode Controls */
-                <div className="space-y-2.5 bg-white p-3 rounded-lg border border-stone-200 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-stone-700">Độ nhạy phát hiện cảnh:</span>
-                    <span className="font-bold text-indigo-600">
-                      {sceneSensitivity === 'low'
-                        ? 'Thấp'
-                        : sceneSensitivity === 'high'
-                        ? 'Cao'
-                        : 'Tiêu chuẩn'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {(['low', 'medium', 'high'] as const).map((sens) => (
-                      <button
-                        key={sens}
-                        type="button"
-                        onClick={() => setSceneSensitivity(sens)}
-                        className={`py-1.5 text-xs font-medium rounded border capitalize transition-all cursor-pointer ${
-                          sceneSensitivity === sens
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                            : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
-                        }`}
-                      >
-                        {sens === 'low' ? 'Thấp' : sens === 'high' ? 'Cao' : 'Tiêu chuẩn'}
-                      </button>
-                    ))}
                   </div>
                 </div>
               )}

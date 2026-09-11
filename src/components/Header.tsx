@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Wand2, KeyRound, ShieldCheck, HelpCircle, RotateCcw, Terminal } from 'lucide-react';
+import { Sparkles, Wand2, HelpCircle, RotateCcw } from 'lucide-react';
 import { ApiConfig } from '../types';
 
 interface HeaderProps {
@@ -28,15 +28,10 @@ export const Header: React.FC<HeaderProps> = ({
   hasApiLog = false,
 }) => {
   const isGpt = apiConfig.activeProvider === 'gpt-image-2';
-  const isCustomActive = isGpt
-    ? Boolean(apiConfig.gptImage?.isCustomKeyActive && apiConfig.gptImage?.apiKey)
-    : Boolean(apiConfig.isCustomKeyActive && apiConfig.apiKey);
 
   const activeModelName = isGpt
     ? (apiConfig.gptImage?.model || 'GPT-Image-2')
     : (apiConfig.model || 'Gemini 3.1 Flash Image');
-
-  const isSystemReady = isGpt ? hasOpenAiKey : hasApiKey;
 
   return (
     <header
@@ -76,55 +71,6 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Controls & Indicators */}
         <div className="flex items-center flex-wrap gap-2 self-end sm:self-auto">
-          {/* Key Settings Button */}
-          <button
-            id="header-api-key-btn"
-            type="button"
-            onClick={onOpenApiSettings}
-            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all active:scale-95 ${isCustomActive
-              ? isGpt
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
-              : isSystemReady
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-              }`}
-            title="Cấu hình API Key & Động cơ tạo ảnh"
-          >
-            {isCustomActive ? (
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            ) : (
-              <KeyRound className="w-3.5 h-3.5" />
-            )}
-            <span>
-              {isCustomActive
-                ? `${isGpt ? 'GPT-Image-2' : 'Gemini'}: Khóa riêng`
-                : isSystemReady
-                  ? 'Khóa hệ thống'
-                  : 'Cấu hình API Key'}
-            </span>
-          </button>
-
-          {/* View Body Log Button */}
-          {onOpenLogModal && (
-            <button
-              id="header-view-log-btn"
-              type="button"
-              onClick={onOpenLogModal}
-              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition-all active:scale-95 ${hasApiLog
-                ? 'bg-stone-900 text-emerald-400 border-stone-700 hover:bg-stone-800 shadow-xs'
-                : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200/80'
-                }`}
-              title="Xem toàn bộ Body và Prompt đã gửi đến API tạo ảnh"
-            >
-              <Terminal className={`w-3.5 h-3.5 ${hasApiLog ? 'text-emerald-400' : 'text-stone-500'}`} />
-              <span>Log Body API</span>
-              {hasApiLog && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-              )}
-            </button>
-          )}
-
           {/* Guide button */}
           <button
             id="guide-modal-btn"

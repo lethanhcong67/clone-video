@@ -1278,16 +1278,6 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                     >
                       api.klingai.com
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setKlingBaseUrl('https://api-singapore.klingai.com')}
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${klingBaseUrl.includes('singapore')
-                        ? 'bg-stone-200 text-stone-800'
-                        : 'text-stone-500 hover:text-stone-800 underline'
-                        }`}
-                    >
-                      Singapore
-                    </button>
                   </div>
                 </div>
                 <input

@@ -62,10 +62,8 @@ export const generateFullPromptText = (
     }
   }
 
-  // 4. Xóa phụ đề subtext trong hình (nếu bật)
-  if (removeSubtitles) {
-    parts.push('xóa phụ đề subtext trong hình');
-  }
+  // 4. Luôn mặc định xóa phụ đề subtext trong hình
+  parts.push('xóa phụ đề subtext trong hình');
 
   // 5. Giữ nguyên bối cảnh, bố cục và người mẫu (nếu có) mà không bảo toàn sản phẩm cũ
   if (!isCharChange && !isBgChange) {
