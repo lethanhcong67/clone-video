@@ -33,6 +33,11 @@ const DEFAULT_GPT_CONFIG: GptImageConfig = {
   quality: 'medium',
   isCustomKeyActive: true,
   isValidated: true,
+  endpointKeys: {
+    'https://api.openlux.ai/v1/images/edits': 'sk-2YrQt4dMCkJQCBR439Hq1rlvCtONjFfEvFu7MGrW4rledtzM',
+    'https://www.mnapi.com/v1/images/edits': 'sk-tsuRNN1G5A25E9oGyXPSgeJjaR97tmdTzrxtFHKqgpzQ8ChR',
+    'https://api.openai.com/v1': '',
+  },
 };
 
 export const DEFAULT_KLING_NEGATIVE_PROMPT = '';
@@ -71,10 +76,22 @@ function loadSavedApiConfig(): ApiConfig {
     if (saved) {
       const parsed = JSON.parse(saved);
       const savedBaseUrl = parsed.gptImage?.baseUrl;
-      const effectiveBaseUrl =
-        !savedBaseUrl || savedBaseUrl === 'https://api.openai.com/v1' || savedBaseUrl === 'https://www.mnapi.com/v1/images/edits'
-          ? 'https://api.openlux.ai/v1/images/edits'
-          : savedBaseUrl;
+      const effectiveBaseUrl = savedBaseUrl || 'https://api.openlux.ai/v1/images/edits';
+
+      const defaultGptEndpointKeys: Record<string, string> = {
+        'https://api.openlux.ai/v1/images/edits': 'sk-2YrQt4dMCkJQCBR439Hq1rlvCtONjFfEvFu7MGrW4rledtzM',
+        'https://www.mnapi.com/v1/images/edits': 'sk-tsuRNN1G5A25E9oGyXPSgeJjaR97tmdTzrxtFHKqgpzQ8ChR',
+        'https://api.openai.com/v1': '',
+      };
+      const mergedGptEndpointKeys = {
+        ...defaultGptEndpointKeys,
+        ...(parsed.gptImage?.endpointKeys || {}),
+      };
+      if (parsed.gptImage?.apiKey && effectiveBaseUrl) {
+        mergedGptEndpointKeys[effectiveBaseUrl] = parsed.gptImage.apiKey;
+      }
+
+      const activeGptKey = parsed.gptImage?.apiKey || mergedGptEndpointKeys[effectiveBaseUrl] || DEFAULT_GPT_CONFIG.apiKey;
 
       const savedKlingBaseUrl = parsed.kling?.baseUrl;
       const effectiveKlingBaseUrl =
@@ -90,14 +107,15 @@ function loadSavedApiConfig(): ApiConfig {
         isValidated: Boolean(parsed.isValidated ?? true),
         lastValidatedAt: parsed.lastValidatedAt,
         gptImage: {
-          apiKey: parsed.gptImage?.apiKey || DEFAULT_GPT_CONFIG.apiKey,
+          apiKey: activeGptKey,
           baseUrl: effectiveBaseUrl,
           model: parsed.gptImage?.model || 'gpt-image-2',
           size: parsed.gptImage?.size || '1152x2048',
           quality: parsed.gptImage?.quality === 'standard' ? 'medium' : (parsed.gptImage?.quality || 'medium'),
-          isCustomKeyActive: Boolean(parsed.gptImage?.apiKey || DEFAULT_GPT_CONFIG.apiKey),
+          isCustomKeyActive: Boolean(activeGptKey),
           isValidated: parsed.gptImage?.isValidated !== undefined ? Boolean(parsed.gptImage?.isValidated) : DEFAULT_GPT_CONFIG.isValidated,
           lastValidatedAt: parsed.gptImage?.lastValidatedAt,
+          endpointKeys: mergedGptEndpointKeys,
         },
         kling: {
           apiKey: parsed.kling?.apiKey || DEFAULT_KLING_CONFIG.apiKey,

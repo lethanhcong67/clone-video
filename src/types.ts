@@ -158,6 +158,7 @@ export interface GptImageConfig {
   isCustomKeyActive: boolean;
   isValidated: boolean;
   lastValidatedAt?: string;
+  endpointKeys?: Record<string, string>;
 }
 
 export interface KlingVideoConfig {

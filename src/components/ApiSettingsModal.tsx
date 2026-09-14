@@ -137,6 +137,12 @@ export const AVAILABLE_VISION_MODELS: ImageModelOption[] = [
   },
 ];
 
+export const DEFAULT_GPT_ENDPOINT_KEYS: Record<string, string> = {
+  'https://api.openlux.ai/v1/images/edits': 'sk-2YrQt4dMCkJQCBR439Hq1rlvCtONjFfEvFu7MGrW4rledtzM',
+  'https://www.mnapi.com/v1/images/edits': 'sk-tsuRNN1G5A25E9oGyXPSgeJjaR97tmdTzrxtFHKqgpzQ8ChR',
+  'https://api.openai.com/v1': '',
+};
+
 interface ApiSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -189,10 +195,22 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
     message: string;
   } | null>(null);
 
-  // GPT-Image-2 state
-  const [gptKey, setGptKey] = useState(config.gptImage?.apiKey || 'sk-2YrQt4dMCkJQCBR439Hq1rlvCtONjFfEvFu7MGrW4rledtzM');
+  // GPT-Image-2 state & endpoint pairing map
+  const [gptEndpointKeys, setGptEndpointKeys] = useState<Record<string, string>>(() => {
+    const initialMap = {
+      ...DEFAULT_GPT_ENDPOINT_KEYS,
+      ...(config.gptImage?.endpointKeys || {}),
+    };
+    if (config.gptImage?.apiKey && config.gptImage?.baseUrl) {
+      initialMap[config.gptImage.baseUrl] = config.gptImage.apiKey;
+    }
+    return initialMap;
+  });
   const [gptBaseUrl, setGptBaseUrl] = useState(
     config.gptImage?.baseUrl || 'https://api.openlux.ai/v1/images/edits'
+  );
+  const [gptKey, setGptKey] = useState(
+    config.gptImage?.apiKey || DEFAULT_GPT_ENDPOINT_KEYS['https://api.openlux.ai/v1/images/edits']
   );
   const [selectedGptModel, setSelectedGptModel] = useState(config.gptImage?.model || 'gpt-image-2');
   const [gptSize, setGptSize] = useState<string>(config.gptImage?.size || '1152x2048');
@@ -262,8 +280,19 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
       setGeminiBaseUrl(config.visionAnalysis?.baseUrl || 'https://api.openlux.ai/v1beta/models/gemini-3.5-flash:generateContent');
       setSelectedGeminiModel(config.model || 'gemini-3.1-flash-image');
       setUseCustomGeminiKey(config.isCustomKeyActive);
-      setGptKey(config.gptImage?.apiKey || '');
-      setGptBaseUrl(config.gptImage?.baseUrl || 'https://api.openlux.ai/v1/images/edits');
+
+      const curBaseUrl = config.gptImage?.baseUrl || 'https://api.openlux.ai/v1/images/edits';
+      const map: Record<string, string> = {
+        ...DEFAULT_GPT_ENDPOINT_KEYS,
+        ...(config.gptImage?.endpointKeys || {}),
+      };
+      if (config.gptImage?.apiKey) {
+        map[curBaseUrl] = config.gptImage.apiKey;
+      }
+      const curKey = config.gptImage?.apiKey || map[curBaseUrl] || DEFAULT_GPT_ENDPOINT_KEYS[curBaseUrl] || '';
+      setGptEndpointKeys(map);
+      setGptBaseUrl(curBaseUrl);
+      setGptKey(curKey);
       setSelectedGptModel(config.gptImage?.model || 'gpt-image-2');
       setGptSize(config.gptImage?.size || '1152x2048');
       setGptQuality(config.gptImage?.quality === 'standard' ? 'medium' : (config.gptImage?.quality || 'medium'));
@@ -290,6 +319,24 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
     }
   }, [isOpen, config, initialTab]);
 
+  const handleSelectGptEndpoint = (targetUrl: string) => {
+    const curUrl = gptBaseUrl.trim();
+    const updatedMap: Record<string, string> = {
+      ...gptEndpointKeys,
+      [curUrl]: gptKey.trim(),
+    };
+    const targetKey =
+      updatedMap[targetUrl] !== undefined
+        ? updatedMap[targetUrl]
+        : (DEFAULT_GPT_ENDPOINT_KEYS[targetUrl] ?? '');
+
+    updatedMap[targetUrl] = targetKey;
+    setGptEndpointKeys(updatedMap);
+    setGptBaseUrl(targetUrl);
+    setGptKey(targetKey);
+    setGptTestResult(null);
+  };
+
   if (!isOpen) return null;
 
   // Clipboard helpers
@@ -310,7 +357,12 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
-        setGptKey(text.trim());
+        const val = text.trim();
+        setGptKey(val);
+        setGptEndpointKeys((prev) => ({
+          ...prev,
+          [gptBaseUrl.trim()]: val,
+        }));
         setGptTestResult(null);
       }
     } catch (e) {
@@ -541,6 +593,10 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
 
   const handleSave = () => {
     const isCustomGeminiActive = Boolean(geminiKey.trim() && useCustomGeminiKey);
+    const finalGptEndpointKeys: Record<string, string> = {
+      ...gptEndpointKeys,
+      [gptBaseUrl.trim()]: gptKey.trim(),
+    };
     const updatedGptConfig: GptImageConfig = {
       apiKey: gptKey.trim(),
       baseUrl: gptBaseUrl.trim() || 'https://api.openlux.ai/v1/images/edits',
@@ -550,6 +606,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
       isCustomKeyActive: Boolean(gptKey.trim()),
       isValidated: gptTestResult?.success ?? config.gptImage?.isValidated ?? false,
       lastValidatedAt: gptTestResult?.success ? new Date().toISOString() : config.gptImage?.lastValidatedAt,
+      endpointKeys: finalGptEndpointKeys,
     };
 
     const effectiveKey = klingKey.trim() || klingSecretKey.trim() || klingAccessKey.trim();
@@ -920,10 +977,15 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                     type={showGptKey ? 'text' : 'password'}
                     value={gptKey}
                     onChange={(e) => {
-                      setGptKey(e.target.value);
+                      const val = e.target.value;
+                      setGptKey(val);
+                      setGptEndpointKeys((prev) => ({
+                        ...prev,
+                        [gptBaseUrl.trim()]: val,
+                      }));
                       setGptTestResult(null);
                     }}
-                    placeholder="sk-proj-..."
+                    placeholder="sk-proj-... hoặc sk-tsu..."
                     className="w-full pl-3 pr-10 py-2 rounded-lg border border-stone-300 text-xs font-mono text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
                   />
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -946,11 +1008,11 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                     <Globe className="w-3.5 h-3.5 text-stone-500" />
                     <span>Endpoint:</span>
                   </label>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => setGptBaseUrl('https://api.openlux.ai/v1/images/edits')}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${gptBaseUrl.includes('openlux.ai')
+                      onClick={() => handleSelectGptEndpoint('https://api.openlux.ai/v1/images/edits')}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all cursor-pointer ${gptBaseUrl.includes('openlux.ai')
                         ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                         : 'text-stone-500 hover:text-emerald-700 underline'
                         }`}
@@ -959,8 +1021,18 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setGptBaseUrl('https://api.openai.com/v1')}
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${gptBaseUrl.includes('openai.com')
+                      onClick={() => handleSelectGptEndpoint('https://www.mnapi.com/v1/images/edits')}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all cursor-pointer ${gptBaseUrl.includes('mnapi.com')
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'text-stone-500 hover:text-emerald-700 underline'
+                        }`}
+                    >
+                      MNAPI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectGptEndpoint('https://api.openai.com/v1')}
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all cursor-pointer ${gptBaseUrl.includes('openai.com')
                         ? 'bg-stone-200 text-stone-800'
                         : 'text-stone-500 hover:text-stone-800 underline'
                         }`}
@@ -973,8 +1045,14 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
                   id="gpt-base-url-input"
                   type="text"
                   value={gptBaseUrl}
-                  onChange={(e) => setGptBaseUrl(e.target.value)}
-                  placeholder="https://api.openlux.ai/v1/images/edits"
+                  onChange={(e) => {
+                    const newUrl = e.target.value;
+                    setGptBaseUrl(newUrl);
+                    if (gptEndpointKeys[newUrl.trim()] !== undefined) {
+                      setGptKey(gptEndpointKeys[newUrl.trim()]);
+                    }
+                  }}
+                  placeholder="https://api.openlux.ai/v1/images/edits hoặc https://www.mnapi.com/v1/images/edits"
                   className="w-full px-3 py-1.5 rounded-lg border border-stone-300 text-xs font-mono text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
                 />
               </div>
