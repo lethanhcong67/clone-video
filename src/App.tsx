@@ -513,93 +513,137 @@ export default function App() {
       requestPayload
     );
 
-    try {
-      const response = await fetch('/api/generate-replacement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: providerToUse,
-          variationIndex,
-          prompt: rowFullPrompt,
-          customPrompt: rowFullPrompt,
-          gptImageConfig: {
-            apiKey: effectiveApiKey,
-            baseUrl: apiConfig.gptImage?.baseUrl || 'https://api.openlux.ai/v1/images/edits',
-            model: apiConfig.gptImage?.model || 'gpt-image-2',
-            size: apiConfig.gptImage?.size || '1152x2048',
-            quality: apiConfig.gptImage?.quality || 'medium',
+    // Define provider cascade attempts for GPT-Image-2 (OpenLux AI -> MNAPI fallback)
+    const gptEndpointsToTry = providerToUse === 'gpt-image-2'
+      ? [
+          {
+            name: 'OpenLux AI',
+            baseUrl: 'https://api.openlux.ai/v1/images/edits',
+            apiKey:
+              apiConfig.gptImage?.endpointKeys?.['https://api.openlux.ai/v1/images/edits'] ||
+              (apiConfig.gptImage?.baseUrl?.includes('openlux.ai') ? apiConfig.gptImage?.apiKey : undefined) ||
+              'sk-2YrQt4dMCkJQCBR439Hq1rlvCtONjFfEvFu7MGrW4rledtzM',
           },
-          productImages: productImagesPayload,
-          originalImageBase64: item.dataUrl,
-          originalMimeType: item.mimeType,
-          enableCharacter: isCharacterEnabled,
-          enableOutfit: isOutfitEnabled,
-          enableBackground: Boolean(effectiveBackgroundPrompt),
-          characterPrompt: effectiveCharacterPrompt,
-          productName: effectiveProductName,
-          outfitPrompt: effectiveOutfitPrompt,
-          backgroundPrompt: effectiveBackgroundPrompt,
-          outfitImageBase64: effectiveOutfitImageBase64,
-          outfitMimeType: uploadedOutfit?.mimeType || 'image/jpeg',
-          removeSubtitles: settings.removeSubtitles,
-          preserveBackground: effectivePreserveBackground,
-          preservePose: effectivePreservePose,
-          stylePreset: settings.stylePreset,
-          aspectRatio: settings.aspectRatio,
-          apiKey: effectiveApiKey,
-          selectedModel: apiConfig.model || 'gemini-3.1-flash-image',
-        }),
-      });
+          {
+            name: 'MNAPI',
+            baseUrl: 'https://www.mnapi.com/v1/images/edits',
+            apiKey:
+              apiConfig.gptImage?.endpointKeys?.['https://www.mnapi.com/v1/images/edits'] ||
+              (apiConfig.gptImage?.baseUrl?.includes('mnapi.com') ? apiConfig.gptImage?.apiKey : undefined) ||
+              'sk-tsuRNN1G5A25E9oGyXPSgeJjaR97tmdTzrxtFHKqgpzQ8ChR',
+          },
+        ]
+      : [
+          {
+            name: 'Gemini',
+            baseUrl: apiConfig.visionAnalysis?.baseUrl || 'https://api.openlux.ai/v1beta/models/gemini-3.5-flash:generateContent',
+            apiKey: effectiveApiKey,
+          },
+        ];
 
-      let data: any = {};
-      const responseText = await response.text();
+    let lastErrorDetail = '';
+
+    for (let attemptIdx = 0; attemptIdx < gptEndpointsToTry.length; attemptIdx++) {
+      const currentAttempt = gptEndpointsToTry[attemptIdx];
+      const attemptApiKey = currentAttempt.apiKey || effectiveApiKey;
+
       try {
-        data = responseText ? JSON.parse(responseText) : {};
-      } catch (parseErr) {
-        if (response.status === 524) {
-          const timeoutMsg = 'Máy chủ AI bị quá thời gian chờ (HTTP 524 Gateway Timeout). API xử lý quá lâu hoặc đường truyền qua Cloudflare bị gián đoạn. Vui lòng bấm thử lại!';
-          showToast(timeoutMsg, 'warning');
-          throw new Error(timeoutMsg);
-        } else if (response.status === 504 || response.status === 502) {
-          const proxyMsg = `Máy chủ AI phản hồi lỗi cổng kết nối (HTTP ${response.status}). Vui lòng kiểm tra lại đường truyền hoặc thử lại sau.`;
-          showToast(proxyMsg, 'warning');
-          throw new Error(proxyMsg);
-        } else {
-          const generalMsg = `Máy chủ phản hồi lỗi (HTTP ${response.status}): ${responseText.substring(0, 100)}`;
-          showToast(generalMsg, 'warning');
-          throw new Error(generalMsg);
-        }
-      }
-
-      if (data.loggedBody) {
         console.log(
-          '%c[AI Image Generator] PHẢN HỒI KÈM LOG BODY TẠO ẢNH TỪ SERVER:',
-          'background: #064e3b; color: #34d399; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px;',
-          data.loggedBody
+          `%c[AI Image Generator] GỬI YÊU CẦU TẠO ẢNH (${currentAttempt.name} - Lượt ${attemptIdx + 1}/${gptEndpointsToTry.length}):`,
+          'background: #1e3a8a; color: #60a5fa; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px;',
+          {
+            provider: providerToUse,
+            targetProvider: currentAttempt.name,
+            endpoint: currentAttempt.baseUrl,
+            variationIndex,
+          }
         );
-        setLatestApiLog(data.loggedBody);
-      }
 
-      if (response.ok && data.imageUrl) {
-        return data.imageUrl;
-      } else {
-        const errorDetail = data.error || (data.needsApiKey ? 'Chưa cấu hình API Key hoặc Khóa API không hợp lệ.' : 'Máy chủ AI không thể tạo ảnh.');
-        if (data.needsApiKey) {
-          showToast(
-            providerToUse === 'gpt-image-2'
-              ? 'Vui lòng kiểm tra lại API Key GPT-Image-2 (sk-...) trong Cấu hình API.'
-              : 'Vui lòng kiểm tra lại API Key Gemini (AIzaSy...) trong Cấu hình API.',
-            'warning'
-          );
-        } else {
-          showToast(`Lỗi tạo ảnh: ${errorDetail}`, 'warning');
+        const response = await fetch('/api/generate-replacement', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: providerToUse,
+            variationIndex,
+            prompt: rowFullPrompt,
+            customPrompt: rowFullPrompt,
+            gptImageConfig: {
+              apiKey: attemptApiKey,
+              baseUrl: currentAttempt.baseUrl,
+              model: apiConfig.gptImage?.model || 'gpt-image-2',
+              size: apiConfig.gptImage?.size || '1152x2048',
+              quality: apiConfig.gptImage?.quality || 'medium',
+              endpointKeys: apiConfig.gptImage?.endpointKeys,
+            },
+            productImages: productImagesPayload,
+            originalImageBase64: item.dataUrl,
+            originalMimeType: item.mimeType,
+            enableCharacter: isCharacterEnabled,
+            enableOutfit: isOutfitEnabled,
+            enableBackground: Boolean(effectiveBackgroundPrompt),
+            characterPrompt: effectiveCharacterPrompt,
+            productName: effectiveProductName,
+            outfitPrompt: effectiveOutfitPrompt,
+            backgroundPrompt: effectiveBackgroundPrompt,
+            outfitImageBase64: effectiveOutfitImageBase64,
+            outfitMimeType: uploadedOutfit?.mimeType || 'image/jpeg',
+            removeSubtitles: settings.removeSubtitles,
+            preserveBackground: effectivePreserveBackground,
+            preservePose: effectivePreservePose,
+            stylePreset: settings.stylePreset,
+            aspectRatio: settings.aspectRatio,
+            apiKey: attemptApiKey,
+            selectedModel: apiConfig.model || 'gemini-3.1-flash-image',
+          }),
+        });
+
+        let data: any = {};
+        const responseText = await response.text();
+        try {
+          data = responseText ? JSON.parse(responseText) : {};
+        } catch (parseErr) {
+          data = { error: `HTTP ${response.status}: ${responseText.substring(0, 100)}` };
         }
-        throw new Error(errorDetail);
+
+        if (data.loggedBody) {
+          console.log(
+            '%c[AI Image Generator] PHẢN HỒI KÈM LOG BODY TẠO ẢNH TỪ SERVER:',
+            'background: #064e3b; color: #34d399; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px;',
+            data.loggedBody
+          );
+          setLatestApiLog(data.loggedBody);
+        }
+
+        if (response.ok && data.imageUrl) {
+          if (attemptIdx > 0) {
+            showToast(`Đã tự động chuyển đổi và tạo ảnh thành công qua ${currentAttempt.name}!`, 'success');
+          }
+          return data.imageUrl;
+        } else {
+          lastErrorDetail = data.error || (data.needsApiKey ? 'Chưa cấu hình API Key hoặc Khóa API không hợp lệ.' : 'Máy chủ AI không thể tạo ảnh.');
+          console.warn(`[Failover] ${currentAttempt.name} trả về lỗi:`, lastErrorDetail);
+
+          // If there is another provider to try (e.g. MNAPI fallback), notify and continue
+          if (attemptIdx < gptEndpointsToTry.length - 1) {
+            const nextProvider = gptEndpointsToTry[attemptIdx + 1];
+            showToast(`${currentAttempt.name} gặp sự cố, đang tự động gen lại bằng ${nextProvider.name}...`, 'info');
+            continue;
+          }
+        }
+      } catch (err: any) {
+        lastErrorDetail = err?.message || String(err);
+        console.warn(`[Failover] Ngoại lệ khi gọi ${currentAttempt.name}:`, lastErrorDetail);
+        if (attemptIdx < gptEndpointsToTry.length - 1) {
+          const nextProvider = gptEndpointsToTry[attemptIdx + 1];
+          showToast(`${currentAttempt.name} lỗi, đang tự động gen lại bằng ${nextProvider.name}...`, 'info');
+          continue;
+        }
       }
-    } catch (err: any) {
-      console.error('Lỗi khi gọi API tạo ảnh:', err);
-      throw err;
     }
+
+    // If all attempts fail, show warning and throw
+    showToast(`Lỗi tạo ảnh sau khi thử tất cả dịch vụ: ${lastErrorDetail}`, 'warning');
+    throw new Error(lastErrorDetail);
   };
 
   // Start batch processing queue with concurrency (up to 5 concurrent images at once)

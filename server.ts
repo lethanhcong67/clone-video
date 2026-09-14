@@ -1616,264 +1616,308 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         const promptInstructions = promptParts.join(', ');
         const effectiveGptPrompt = activeDirectPrompt || promptInstructions;
 
+        // Build the cascade candidate list: Primary -> MNAPI Fallback
+        interface ProviderCandidate {
+          name: string;
+          baseUrl: string;
+          apiKey: string;
+        }
+
+        const endpointKeys = gptImageConfig?.endpointKeys || {};
+        const openLuxUrl = "https://api.openlux.ai/v1/images/edits";
+        const mnApiUrl = "https://www.mnapi.com/v1/images/edits";
+        const defaultOpenLuxKey = "sk-2YrQt4dMCkJQCBR439Hq1rlvCtONjFfEvFu7MGrW4rledtzM";
+        const defaultMnApiKey = "sk-tsuRNN1G5A25E9oGyXPSgeJjaR97tmdTzrxtFHKqgpzQ8ChR";
+
+        // Retrieve OpenLux key (always 1st candidate)
+        const openLuxKey =
+          (gptImageConfig?.baseUrl?.includes("openlux.ai") && gptImageConfig?.apiKey?.trim()) ||
+          endpointKeys[openLuxUrl] ||
+          (headerOpenAiKey && headerOpenAiKey.trim()) ||
+          process.env.OPENLUX_API_KEY ||
+          process.env.OPENAI_API_KEY ||
+          defaultOpenLuxKey;
+
+        // Retrieve MNAPI key (always 2nd fallback candidate)
+        const mnApiKey =
+          (gptImageConfig?.baseUrl?.includes("mnapi.com") && gptImageConfig?.apiKey?.trim()) ||
+          endpointKeys[mnApiUrl] ||
+          process.env.MNAPI_API_KEY ||
+          defaultMnApiKey;
+
+        const candidates: ProviderCandidate[] = [
+          {
+            name: "OpenLux AI (Mặc định)",
+            baseUrl: openLuxUrl,
+            apiKey: openLuxKey,
+          },
+          {
+            name: "MNAPI (Tự động dự phòng)",
+            baseUrl: mnApiUrl,
+            apiKey: mnApiKey,
+          },
+        ];
+
+        // If user configured a custom/different endpoint, add it as 3rd candidate
+        const configuredUrl = gptImageConfig?.baseUrl?.trim();
+        if (configuredUrl && !configuredUrl.includes("openlux.ai") && !configuredUrl.includes("mnapi.com")) {
+          const configuredKey =
+            (gptImageConfig?.apiKey && gptImageConfig.apiKey.trim()) ||
+            endpointKeys[configuredUrl] ||
+            "";
+          if (configuredKey) {
+            candidates.push({
+              name: configuredUrl.includes("openai.com") ? "OpenAI Gốc" : "Custom Endpoint",
+              baseUrl: configuredUrl,
+              apiKey: configuredKey,
+            });
+          }
+        }
+
         let generatedImageUrl: string | null = null;
-        let lastGptError = "";
+        let successfulCandidate: ProviderCandidate | null = null;
+        let successfulEditUrl = "";
+        const candidateErrors: string[] = [];
+
         let pngBuffer: Buffer | null = null;
         const productBlobs: Array<{ filename: string; blob: Blob; refIndex: number; size: number }> = [];
 
-        // Primary execution: Call the exact edit endpoint (e.g. https://api.openlux.ai/v1/images/edits)
+        const rawBuffer = Buffer.from(baseOriginal, "base64");
+        // Convert input image buffer to an RGBA PNG buffer using Sharp
         try {
-          const rawBuffer = Buffer.from(baseOriginal, "base64");
-          // Convert input image buffer to an RGBA PNG buffer using Sharp
+          pngBuffer = await sharp(rawBuffer)
+            .resize(1024, 1024, { fit: "inside", withoutEnlargement: false })
+            .ensureAlpha()
+            .png({ compressionLevel: 8 })
+            .toBuffer();
+        } catch (sharpErr) {
+          console.warn("sharp resize warning, using raw buffer:", sharpErr);
+          pngBuffer = rawBuffer;
+        }
+
+        // Prepare all product reference buffers so they are sent as active visual references
+        if (enableOutfit && normalizedProductRefs.length > 0) {
+          for (const prod of normalizedProductRefs) {
+            const rawProdBuf = Buffer.from(prod.data, "base64");
+            let prodPng: Buffer;
+            try {
+              prodPng = await sharp(rawProdBuf)
+                .resize(1024, 1024, { fit: "inside", withoutEnlargement: false })
+                .ensureAlpha()
+                .png({ compressionLevel: 8 })
+                .toBuffer();
+            } catch {
+              prodPng = rawProdBuf;
+            }
+            productBlobs.push({
+              filename: `image_${prod.refIndex}_product_reference.png`,
+              blob: new Blob([new Uint8Array(prodPng)], { type: "image/png" }),
+              refIndex: prod.refIndex,
+              size: prodPng.length,
+            });
+          }
+        }
+
+        const mainImageBuffer = pngBuffer || rawBuffer;
+
+        // Iterate through candidates (Primary -> MNAPI Fallback)
+        for (let i = 0; i < candidates.length; i++) {
+          const candidate = candidates[i];
+          const { editUrl, baseUrl: targetBaseUrl } = normalizeEditsEndpoint(candidate.baseUrl);
+          const candidateApiKey = candidate.apiKey.trim();
+
+          if (!candidateApiKey) {
+            console.warn(`[FAILOVER] Bỏ qua ${candidate.name} vì chưa có API Key.`);
+            continue;
+          }
+
+          console.log(`\n=======================================================`);
+          console.log(`🚀 [BƯỚC ${i + 1}/${candidates.length}]: TẠO ẢNH QUA ${candidate.name.toUpperCase()}`);
+          console.log(`Endpoint: ${editUrl}`);
+          console.log(`Model: ${gptModel} | Size: ${gptSize} | Quality: ${gptQuality}`);
+          console.log(`=======================================================\n`);
+
+          let lastError = "";
+
           try {
-            pngBuffer = await sharp(rawBuffer)
-              .resize(1024, 1024, { fit: "inside", withoutEnlargement: false })
-              .ensureAlpha()
-              .png({ compressionLevel: 8 })
-              .toBuffer();
-          } catch (sharpErr) {
-            console.warn("sharp resize warning, using raw buffer:", sharpErr);
-            pngBuffer = rawBuffer;
-          }
-
-          // Prepare all product reference buffers so they are sent as active visual references
-          if (enableOutfit && normalizedProductRefs.length > 0) {
-            for (const prod of normalizedProductRefs) {
-              const rawProdBuf = Buffer.from(prod.data, "base64");
-              let prodPng: Buffer;
-              try {
-                prodPng = await sharp(rawProdBuf)
-                  .resize(1024, 1024, { fit: "inside", withoutEnlargement: false })
-                  .ensureAlpha()
-                  .png({ compressionLevel: 8 })
-                  .toBuffer();
-              } catch {
-                prodPng = rawProdBuf;
-              }
-              productBlobs.push({
-                filename: `image_${prod.refIndex}_product_reference.png`,
-                blob: new Blob([new Uint8Array(prodPng)], { type: "image/png" }),
-                refIndex: prod.refIndex,
-                size: prodPng.length,
-              });
+            const formData = new FormData();
+            formData.append("image", new Blob([new Uint8Array(mainImageBuffer)], { type: "image/png" }), "image_1_base.png");
+            for (const p of productBlobs) {
+              formData.append("image", p.blob, p.filename);
             }
-          }
+            formData.append("prompt", effectiveGptPrompt);
+            if (gptModel) formData.append("model", gptModel);
+            formData.append("size", gptSize);
+            if (gptQuality) formData.append("quality", gptQuality);
+            formData.append("response_format", "b64_json");
 
-          const formData = new FormData();
-          // Image 1: Base scene photograph
-          const mainImageBuffer = pngBuffer || rawBuffer;
-          formData.append("image", new Blob([new Uint8Array(mainImageBuffer)], { type: "image/png" }), "image_1_base.png");
-          // Image 2..N: Target product reference image files
-          for (const p of productBlobs) {
-            formData.append("image", p.blob, p.filename);
-          }
-          formData.append("prompt", effectiveGptPrompt);
-          if (gptModel) {
-            formData.append("model", gptModel);
-          }
-          formData.append("size", gptSize);
-          if (gptQuality) {
-            formData.append("quality", gptQuality);
-          }
-          formData.append("response_format", "b64_json");
-
-          console.log("\n=======================================================");
-          console.log("🚀 [BODY YÊU CẦU TẠO ẢNH: GPT-IMAGE-2 (multipart/form-data)]");
-          console.log("Endpoint đích:", editUrl);
-          console.log("Phương thức: POST");
-          console.log("Header Authorization: Bearer sk-***");
-          console.log("Các trường FormData gửi đi:");
-          console.log(JSON.stringify({
-            model: gptModel,
-            size: gptSize,
-            quality: gptQuality,
-            response_format: "b64_json",
-            input_images: [
-              {
-                role: "Image 1 (Ảnh gốc - Bố cục, bối cảnh, tư thế)",
-                filename: "image_1_base.png",
-                size: `${mainImageBuffer.length} bytes (1024x1024 RGBA PNG)`,
+            let editRes = await fetch(editUrl, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${candidateApiKey}`,
               },
-              ...productBlobs.map((p) => ({
-                role: `Image ${p.refIndex} (Ảnh sản phẩm/trang phục tham chiếu cần thay thế)`,
-                filename: p.filename,
-                size: `${p.size} bytes (1024x1024 RGBA PNG)`,
-              })),
-            ],
-            total_reference_images: 1 + productBlobs.length,
-            prompt_length: `${effectiveGptPrompt.length} ký tự`,
-          }, null, 2));
-          console.log("--- NỘI DUNG PROMPT HOÀN CHỈNH GỬI SANG GPT-IMAGE-2 ---");
-          console.log(effectiveGptPrompt);
-          console.log("-------------------------------------------------------");
-          console.log("=======================================================\n");
+              body: formData,
+            });
 
-          let editRes = await fetch(editUrl, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${effectiveGptKey.trim()}`,
-            },
-            body: formData,
-          });
-
-          // Fallback A: If endpoint strictly rejects multiple image files in 'image', retry with single image + enhanced vision prompt
-          if (!editRes.ok) {
-            const errClone = await editRes.clone().json().catch(() => ({}));
-            const errMsg = (errClone?.error?.message || "").toLowerCase();
-            if (
-              errMsg.includes("only 1") ||
-              errMsg.includes("too many") ||
-              errMsg.includes("single file") ||
-              errMsg.includes("single image")
-            ) {
-              console.warn("Proxy endpoint only accepts single file, retrying with single image + vision prompt...");
-              const singleFormData = new FormData();
-              singleFormData.append("image", new Blob([new Uint8Array(mainImageBuffer)], { type: "image/png" }), "image.png");
-              singleFormData.append("prompt", effectiveGptPrompt);
-              if (gptModel) singleFormData.append("model", gptModel);
-              singleFormData.append("size", gptSize);
-              singleFormData.append("response_format", "b64_json");
-              editRes = await fetch(editUrl, {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${effectiveGptKey.trim()}`,
-                },
-                body: singleFormData,
-              });
-            }
-          }
-
-          // Fallback B: If size 1024x1792 was rejected because endpoint only accepts square sizes
-          if (!editRes.ok) {
-            const errClone = await editRes.clone().json().catch(() => ({}));
-            const errMsg = errClone?.error?.message || "";
-            if (errMsg.toLowerCase().includes("size") && gptSize !== "1024x1024") {
-              console.warn("Edit endpoint rejected non-square size, retrying with 1024x1024...");
-              formData.set("size", "1024x1024");
-              editRes = await fetch(editUrl, {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${effectiveGptKey.trim()}`,
-                },
-                body: formData,
-              });
-            }
-          }
-
-          // Fallback C: Inpainting fallback if proxy requires transparent mask
-          if (!editRes.ok) {
-            const errClone = await editRes.clone().json().catch(() => ({}));
-            const errMsg = errClone?.error?.message || "";
-            if (errMsg.toLowerCase().includes("mask") || errMsg.toLowerCase().includes("transparent")) {
-              console.warn("Proxy requires mask, generating transparent mask with sharp...");
-              try {
-                const maskBuffer = await sharp({
-                  create: {
-                    width: 1024,
-                    height: 1024,
-                    channels: 4,
-                    background: { r: 0, g: 0, b: 0, alpha: 0 },
-                  },
-                }).png().toBuffer();
-
-                const retryFormData = new FormData();
-                retryFormData.append("image", new Blob([new Uint8Array(mainImageBuffer)], { type: "image/png" }), "image_1_base.png");
-                for (const p of productBlobs) {
-                  retryFormData.append("image", p.blob, p.filename);
-                }
-                retryFormData.append("mask", new Blob([new Uint8Array(maskBuffer)], { type: "image/png" }), "mask.png");
-                retryFormData.append("prompt", effectiveGptPrompt);
-                if (gptModel) retryFormData.append("model", gptModel);
-                retryFormData.append("size", gptSize);
-                retryFormData.append("response_format", "b64_json");
-
-                console.log("\n=======================================================");
-                console.log("🔄 [BODY YÊU CẦU RETRY KÈM MASK TRONG SUỐT CHO PROXY]");
-                console.log("Endpoint:", editUrl);
-                console.log("-------------------------------------------------------");
-                console.log("=======================================================\n");
-
+            // Fallback 1: Proxy only accepts single file
+            if (!editRes.ok) {
+              const errClone = await editRes.clone().json().catch(() => ({}));
+              const errMsg = (errClone?.error?.message || "").toLowerCase();
+              if (
+                errMsg.includes("only 1") ||
+                errMsg.includes("too many") ||
+                errMsg.includes("single file") ||
+                errMsg.includes("single image")
+              ) {
+                console.warn(`[${candidate.name}] Proxy endpoint only accepts single file, retrying with single image + vision prompt...`);
+                const singleFormData = new FormData();
+                singleFormData.append("image", new Blob([new Uint8Array(mainImageBuffer)], { type: "image/png" }), "image.png");
+                singleFormData.append("prompt", effectiveGptPrompt);
+                if (gptModel) singleFormData.append("model", gptModel);
+                singleFormData.append("size", gptSize);
+                singleFormData.append("response_format", "b64_json");
                 editRes = await fetch(editUrl, {
                   method: "POST",
                   headers: {
-                    Authorization: `Bearer ${effectiveGptKey.trim()}`,
+                    Authorization: `Bearer ${candidateApiKey}`,
                   },
-                  body: retryFormData,
+                  body: singleFormData,
                 });
-              } catch (maskErr) {
-                console.warn("Could not generate mask buffer:", maskErr);
               }
             }
-          }
 
-          if (editRes.ok) {
-            const editData = await editRes.json();
-            if (editData.data && editData.data[0]) {
-              if (editData.data[0].b64_json) {
-                generatedImageUrl = `data:image/png;base64,${editData.data[0].b64_json}`;
-              } else if (editData.data[0].url) {
-                generatedImageUrl = editData.data[0].url;
+            // Fallback 2: Size rejected
+            if (!editRes.ok) {
+              const errClone = await editRes.clone().json().catch(() => ({}));
+              const errMsg = (errClone?.error?.message || "").toLowerCase();
+              if (errMsg.includes("size") && gptSize !== "1024x1024") {
+                console.warn(`[${candidate.name}] Edit endpoint rejected non-square size, retrying with 1024x1024...`);
+                formData.set("size", "1024x1024");
+                editRes = await fetch(editUrl, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${candidateApiKey}`,
+                  },
+                  body: formData,
+                });
               }
             }
-          } else {
-            const errObj = await editRes.json().catch(() => ({}));
-            lastGptError = errObj?.error?.message || `HTTP ${editRes.status}`;
-            console.warn(`Edit endpoint ${editUrl} returned error:`, lastGptError);
-          }
-        } catch (e: any) {
-          lastGptError = e?.message || String(e);
-          console.warn("Exception during image edit call:", lastGptError);
-        }
 
-        // Secondary fallback to /v1/images/generations if edits failed
-        if (!generatedImageUrl) {
-          const candidateModel = gptModel || "gpt-image-2";
-          const fallbackPayload = {
-            model: candidateModel,
-            prompt: promptInstructions,
-            size: gptSize,
-            quality: candidateModel === "dall-e-3" ? gptQuality || "standard" : undefined,
-            response_format: "b64_json",
-          };
+            // Fallback 3: Inpainting mask required
+            if (!editRes.ok) {
+              const errClone = await editRes.clone().json().catch(() => ({}));
+              const errMsg = (errClone?.error?.message || "").toLowerCase();
+              if (errMsg.includes("mask") || errMsg.includes("transparent")) {
+                console.warn(`[${candidate.name}] Proxy requires mask, generating transparent mask...`);
+                try {
+                  const maskBuffer = await sharp({
+                    create: {
+                      width: 1024,
+                      height: 1024,
+                      channels: 4,
+                      background: { r: 0, g: 0, b: 0, alpha: 0 },
+                    },
+                  }).png().toBuffer();
 
-          try {
-            console.log("\n=======================================================");
-            console.log("⚠️ [BODY YÊU CẦU DỰ PHÒNG: /v1/images/generations (JSON)]");
-            console.log("Endpoint:", `${targetBaseUrl}/images/generations`);
-            console.log("JSON Body:", JSON.stringify(fallbackPayload, null, 2));
-            console.log("=======================================================\n");
+                  const retryFormData = new FormData();
+                  retryFormData.append("image", new Blob([new Uint8Array(mainImageBuffer)], { type: "image/png" }), "image_1_base.png");
+                  for (const p of productBlobs) {
+                    retryFormData.append("image", p.blob, p.filename);
+                  }
+                  retryFormData.append("mask", new Blob([new Uint8Array(maskBuffer)], { type: "image/png" }), "mask.png");
+                  retryFormData.append("prompt", effectiveGptPrompt);
+                  if (gptModel) retryFormData.append("model", gptModel);
+                  retryFormData.append("size", gptSize);
+                  retryFormData.append("response_format", "b64_json");
 
-            const genRes = await fetch(`${targetBaseUrl}/images/generations`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${effectiveGptKey.trim()}`,
-              },
-              body: JSON.stringify(fallbackPayload),
-            });
+                  editRes = await fetch(editUrl, {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${candidateApiKey}`,
+                    },
+                    body: retryFormData,
+                  });
+                } catch (maskErr) {
+                  console.warn("Could not generate mask buffer:", maskErr);
+                }
+              }
+            }
 
-            if (genRes.ok) {
-              const genData = await genRes.json();
-              if (genData.data && genData.data[0]) {
-                if (genData.data[0].b64_json) {
-                  generatedImageUrl = `data:image/png;base64,${genData.data[0].b64_json}`;
-                } else if (genData.data[0].url) {
-                  generatedImageUrl = genData.data[0].url;
+            if (editRes.ok) {
+              const editData = await editRes.json();
+              if (editData.data && editData.data[0]) {
+                if (editData.data[0].b64_json) {
+                  generatedImageUrl = `data:image/png;base64,${editData.data[0].b64_json}`;
+                } else if (editData.data[0].url) {
+                  generatedImageUrl = editData.data[0].url;
                 }
               }
             } else {
-              const genErrObj = await genRes.json().catch(() => ({}));
-              lastGptError = genErrObj?.error?.message || lastGptError;
+              const errObj = await editRes.json().catch(() => ({}));
+              lastError = errObj?.error?.message || `HTTP ${editRes.status}`;
             }
-          } catch (genErr: any) {
-            console.warn("Generations fallback error:", genErr);
+          } catch (e: any) {
+            lastError = e?.message || String(e);
+          }
+
+          // Fallback to /v1/images/generations on the same candidate if edit failed
+          if (!generatedImageUrl) {
+            const candidateModel = gptModel || "gpt-image-2";
+            const fallbackPayload = {
+              model: candidateModel,
+              prompt: promptInstructions,
+              size: gptSize,
+              quality: candidateModel === "dall-e-3" ? gptQuality || "standard" : undefined,
+              response_format: "b64_json",
+            };
+
+            try {
+              const genRes = await fetch(`${targetBaseUrl}/images/generations`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${candidateApiKey}`,
+                },
+                body: JSON.stringify(fallbackPayload),
+              });
+
+              if (genRes.ok) {
+                const genData = await genRes.json();
+                if (genData.data && genData.data[0]) {
+                  if (genData.data[0].b64_json) {
+                    generatedImageUrl = `data:image/png;base64,${genData.data[0].b64_json}`;
+                  } else if (genData.data[0].url) {
+                    generatedImageUrl = genData.data[0].url;
+                  }
+                }
+              } else {
+                const genErrObj = await genRes.json().catch(() => ({}));
+                lastError = genErrObj?.error?.message || lastError;
+              }
+            } catch (genErr: any) {
+              console.warn("Generations fallback error:", genErr);
+            }
+          }
+
+          if (generatedImageUrl) {
+            console.log(`\n✅ [TẠO ẢNH THÀNH CÔNG] Đã tạo thành công qua ${candidate.name} (${editUrl})\n`);
+            successfulCandidate = candidate;
+            successfulEditUrl = editUrl;
+            break; // Success! Stop failover loop
+          } else {
+            console.warn(`\n⚠️ [${candidate.name} THẤT BẠI]: ${lastError}`);
+            candidateErrors.push(`${candidate.name}: ${lastError}`);
+            if (i < candidates.length - 1) {
+              console.log(`🔄 [TỰ ĐỘNG CHUYỂN TIẾP] Đang tự động thử lại với ${candidates[i + 1].name} (${candidates[i + 1].baseUrl})...\n`);
+            }
           }
         }
 
         if (!generatedImageUrl) {
+          const combinedError = candidateErrors.join(" | ") || "Không nhận được hình ảnh từ các dịch vụ API. Vui lòng kiểm tra lại API Key hoặc hạn ngạch.";
           return res.status(400).json({
-            error: `Lỗi từ ${editUrl}: ${lastGptError || "Không nhận được hình ảnh từ API. Vui lòng kiểm tra lại API Key hoặc hạn ngạch."}`,
-            needsApiKey: lastGptError.toLowerCase().includes("token") || lastGptError.toLowerCase().includes("api key") || lastGptError.toLowerCase().includes("unauthorized"),
+            error: `Lỗi tạo ảnh sau khi thử tất cả nhà cung cấp: ${combinedError}`,
+            needsApiKey: combinedError.toLowerCase().includes("token") || combinedError.toLowerCase().includes("api key") || combinedError.toLowerCase().includes("unauthorized"),
           });
         }
 
@@ -1897,7 +1941,8 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
 
         const loggedBody = {
           provider: "gpt-image-2",
-          endpoint: editUrl,
+          endpoint: successfulEditUrl || openLuxUrl,
+          providerUsed: successfulCandidate?.name || "OpenLux AI",
           method: "POST",
           headers: {
             Authorization: "Bearer sk-***",
