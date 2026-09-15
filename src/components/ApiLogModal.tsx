@@ -38,7 +38,7 @@ export const ApiLogModal: React.FC<ApiLogModalProps> = ({ isOpen, onClose, logDa
             </div>
             <div>
               <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                Log Body Yêu Cầu Tạo Ảnh (Request Body)
+                Log Payload Yêu Cầu Gửi Đi (API Request)
                 {logData?.provider && (
                   <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-stone-800 text-emerald-400 border border-stone-700">
                     {logData.provider}
@@ -46,7 +46,7 @@ export const ApiLogModal: React.FC<ApiLogModalProps> = ({ isOpen, onClose, logDa
                 )}
               </h3>
               <p className="text-xs text-stone-400">
-                Toàn bộ tham số và Prompt thực tế đã gửi đến API AI
+                Toàn bộ tham số, hình ảnh tham chiếu (đầu/cuối) và Prompt thực tế đã gửi đến API AI
               </p>
             </div>
           </div>
@@ -86,9 +86,9 @@ export const ApiLogModal: React.FC<ApiLogModalProps> = ({ isOpen, onClose, logDa
           {!logData ? (
             <div className="text-center py-12 text-stone-500">
               <Code2 className="w-10 h-10 mx-auto mb-2 opacity-40" />
-              <p>Chưa có lượt tạo ảnh nào gần đây.</p>
+              <p>Chưa có lượt tạo ảnh/video nào gần đây.</p>
               <p className="text-[11px] text-stone-600 mt-1">
-                Hãy nhấn "Bắt đầu thay thế ảnh" để hệ thống ghi nhận body yêu cầu.
+                Hãy nhấn tạo ảnh hoặc tạo video để hệ thống ghi nhận body yêu cầu.
               </p>
             </div>
           ) : (
@@ -97,20 +97,25 @@ export const ApiLogModal: React.FC<ApiLogModalProps> = ({ isOpen, onClose, logDa
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-stone-950/80 p-3 rounded-xl border border-stone-800 text-stone-300">
                 <div>
                   <span className="text-[10px] uppercase tracking-wider text-stone-500 block">Động cơ</span>
-                  <span className="font-semibold text-white">{logData.provider || 'N/A'}</span>
+                  <span className="font-semibold text-white truncate block">{logData.provider || 'N/A'}</span>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase tracking-wider text-stone-500 block">Model</span>
-                  <span className="font-semibold text-emerald-400">{logData.model || logData.formData?.model || 'N/A'}</span>
+                  <span className="font-semibold text-emerald-400 truncate block">
+                    {logData.model_name || logData.model || logData.formData?.model || 'N/A'}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] uppercase tracking-wider text-stone-500 block">Kích thước</span>
-                  <span className="font-semibold text-indigo-400">{logData.config?.imageConfig?.aspectRatio || logData.formData?.size || 'N/A'}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-stone-500 block">Tỉ lệ / Frames</span>
+                  <span className="font-semibold text-indigo-400 truncate block">
+                    {logData.aspect_ratio || logData.config?.imageConfig?.aspectRatio || logData.formData?.size || '9:16'}
+                    {logData.image_tail ? ' (2 Frames: Đầu+Cuối)' : ''}
+                  </span>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase tracking-wider text-stone-500 block">Thời gian</span>
                   <span className="text-[11px] text-stone-400 truncate block">
-                    {logData.timestamp ? new Date(logData.timestamp).toLocaleTimeString('vi-VN') : 'Vừa xong'}
+                    {logData.timestamp || 'Vừa xong'}
                   </span>
                 </div>
               </div>

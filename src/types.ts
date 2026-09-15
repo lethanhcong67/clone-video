@@ -59,6 +59,10 @@ export interface BatchImageItem {
   videoProgress?: number;
   videoTaskId?: string;
   videoError?: string;
+  videoStartImageUrl?: string; // Reference Start Frame (First Frame) - defaults to resultImageUrl
+  videoStartImageName?: string;
+  videoEndImageUrl?: string; // Reference End Frame (Last Frame / image_tail) - optional
+  videoEndImageName?: string;
   customPrompt?: string; // Direct customized prompt for this image item
   // Applied character & outfit/product replacement config for this specific row
   appliedConfig?: AppliedReplacementConfig;

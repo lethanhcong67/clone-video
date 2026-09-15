@@ -992,6 +992,8 @@ export default function App() {
             setApiModalTab('kling');
             setIsApiModalOpen(true);
           }}
+          onDownloadAllZip={handleDownloadAllZip}
+          onLogApiRequest={setLatestApiLog}
         />
       </main>
 

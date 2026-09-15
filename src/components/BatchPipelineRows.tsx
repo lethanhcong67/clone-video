@@ -43,6 +43,7 @@ import { fileToDataUrl, getImageDimensions, downloadImage, downloadVideo } from 
 import { generateMotionVideoFromImage } from '../utils/videoGenerator';
 import { CAMERA_MOVEMENT_PRESETS } from '../data/presets';
 import { BatchPipelineRowItem } from './BatchPipelineRowItem';
+import { CompletedImagesStrip } from './CompletedImagesStrip';
 
 interface BatchPipelineRowsProps {
   items: BatchImageItem[];
@@ -59,6 +60,8 @@ interface BatchPipelineRowsProps {
   apiConfig?: ApiConfig;
   systemHasKlingKey?: boolean;
   onOpenKlingSettings?: () => void;
+  onDownloadAllZip?: () => void;
+  onLogApiRequest?: (logData: any) => void;
 }
 
 export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
@@ -76,6 +79,8 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
   apiConfig,
   systemHasKlingKey = false,
   onOpenKlingSettings,
+  onDownloadAllZip,
+  onLogApiRequest,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -207,7 +212,8 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
 
   // Kling AI Video Generator for a specific row
   const handleGenerateKlingVideoForRow = async (item: BatchImageItem) => {
-    if (!item.resultImageUrl) return;
+    const effectiveStart = item.videoStartImageUrl || item.resultImageUrl || item.dataUrl;
+    if (!effectiveStart) return;
 
     const klingConfig = apiConfig?.kling;
     const apiKey = klingConfig?.apiKey?.trim() || undefined;
@@ -242,35 +248,83 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
       videoStatus: 'generating',
       videoProgress: 10,
       videoError: undefined,
+      videoUrl: undefined,
+      videoTaskId: undefined,
     });
 
     try {
       const promptText = item.videoPrompt?.trim() || '';
+      const effectiveEnd = item.videoEndImageUrl && item.videoEndImageUrl.trim() ? item.videoEndImageUrl.trim() : undefined;
+
+      const videoPayloadToSend = {
+        apiKey,
+        accessKey,
+        secretKey,
+        baseUrl,
+        model_name: model,
+        model,
+        mode,
+        duration,
+        aspect_ratio: aspectRatio,
+        multi_shot: multiShot,
+        cfg_scale: cfgScale,
+        negative_prompt: negativePrompt,
+        watermark_info: watermarkInfo,
+        prompt: promptText,
+        image: effectiveStart,
+        imageUrl: effectiveStart,
+        image_tail: effectiveEnd,
+        endImageUrl: effectiveEnd,
+      };
+
+      console.log('[Kling Video Client Dispatch]', {
+        rowId: item.id,
+        model,
+        mode,
+        duration,
+        aspectRatio,
+        startImagePreview: `${effectiveStart.slice(0, 40)}... (${effectiveStart.length} chars)`,
+        hasEndImage: Boolean(effectiveEnd),
+        endImagePreview: effectiveEnd ? `${effectiveEnd.slice(0, 40)}... (${effectiveEnd.length} chars)` : 'none',
+        hasImageTailField: Boolean(effectiveEnd),
+      });
 
       const res = await fetch('/api/kling/create-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey,
-          accessKey,
-          secretKey,
-          baseUrl,
-          model_name: model,
-          model,
-          mode,
-          duration,
-          aspect_ratio: aspectRatio,
-          multi_shot: multiShot,
-          cfg_scale: cfgScale,
-          negative_prompt: negativePrompt,
-          watermark_info: watermarkInfo,
-          prompt: promptText,
-          image: item.resultImageUrl,
-          imageUrl: item.resultImageUrl,
-        }),
+        body: JSON.stringify(videoPayloadToSend),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+
+      // Update API Log preview so user can inspect the exact payload sent to Kling
+      if (onLogApiRequest) {
+        if (data.requestPayloadPreview || data.loggedBody) {
+          const logBody = data.requestPayloadPreview || data.loggedBody;
+          onLogApiRequest({
+            ...logBody,
+            provider: `Kling AI Video (${logBody.model_name || model})`,
+            timestamp: new Date().toLocaleTimeString(),
+          });
+        } else {
+          onLogApiRequest({
+            model_name: model,
+            mode,
+            duration,
+            aspect_ratio: aspectRatio,
+            multi_shot: multiShot,
+            image: effectiveStart.length > 60 ? `${effectiveStart.slice(0, 40)}... (${effectiveStart.length} bytes)` : effectiveStart,
+            image_tail: effectiveEnd ? (effectiveEnd.length > 60 ? `${effectiveEnd.slice(0, 40)}... (${effectiveEnd.length} bytes)` : effectiveEnd) : undefined,
+            prompt: promptText,
+            negative_prompt: negativePrompt,
+            cfg_scale: cfgScale,
+            watermark_info: watermarkInfo,
+            provider: `Kling AI Video (${model})`,
+            timestamp: new Date().toLocaleTimeString(),
+          });
+        }
+      }
+
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Lỗi khi gửi yêu cầu tạo video Kling AI');
       }
@@ -498,6 +552,30 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
         </div>
       )}
 
+      {/* Top Strip: All Completed Generated Images */}
+      {items.length > 0 && (
+        <CompletedImagesStrip
+          items={items}
+          onOpenLightbox={(url, title) => {
+            setLightboxImageUrl(url);
+            setLightboxTitle(title);
+          }}
+          onSelectAsStartFrame={(itemId, imageUrl, imageName) => {
+            onUpdateItem(itemId, {
+              videoStartImageUrl: imageUrl,
+              videoStartImageName: imageName,
+            });
+          }}
+          onSelectAsEndFrame={(itemId, imageUrl, imageName) => {
+            onUpdateItem(itemId, {
+              videoEndImageUrl: imageUrl,
+              videoEndImageName: imageName,
+            });
+          }}
+          onDownloadAllZip={onDownloadAllZip}
+        />
+      )}
+
       {/* Main Row-Based Pipeline List */}
       {items.length > 0 && (
         <div className="space-y-4">
@@ -521,6 +599,7 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
               }}
               onGenerateKlingVideo={handleGenerateKlingVideoForRow}
               onGenerateInstantVideo={handleGenerateInstantVideoForRow}
+              allItems={items}
             />
           ))}
         </div>

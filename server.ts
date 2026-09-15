@@ -837,6 +837,9 @@ IMPORTANT RULES:
       const {
         image, // Base64 data URL or URL
         imageUrl,
+        image_tail, // Optional End Frame / Last Frame for Kling AI video
+        endImage,
+        endImageUrl,
         prompt,
         apiKey,
         accessKey,
@@ -860,6 +863,15 @@ IMPORTANT RULES:
         });
       }
 
+      const finalImageTail =
+        image_tail ||
+        endImage ||
+        endImageUrl ||
+        req.body.imageTail ||
+        req.body.end_image ||
+        req.body.image_tail_url ||
+        null;
+
       const cleanBaseUrl = normalizeKlingBaseUrl(baseUrl);
       const token = resolveKlingAuthToken(apiKey || accessKey, secretKey);
 
@@ -870,11 +882,28 @@ IMPORTANT RULES:
       }
 
       // Format image: Kling AI accepts public URL or clean base64 string
-      let formattedImage = finalImage;
-      if (typeof finalImage === "string" && finalImage.startsWith("data:")) {
-        const commaIdx = finalImage.indexOf(",");
+      let formattedImage = typeof finalImage === "string" ? finalImage.trim() : finalImage;
+      if (typeof formattedImage === "string" && formattedImage.startsWith("data:")) {
+        const commaIdx = formattedImage.indexOf(",");
         if (commaIdx !== -1) {
-          formattedImage = finalImage.slice(commaIdx + 1);
+          formattedImage = formattedImage.slice(commaIdx + 1).trim();
+        }
+      }
+
+      let formattedImageTail: string | null = null;
+      if (finalImageTail && typeof finalImageTail === "string" && finalImageTail.trim()) {
+        const cleanTail = finalImageTail.trim();
+        if (cleanTail !== "undefined" && cleanTail !== "null") {
+          if (cleanTail.startsWith("data:")) {
+            const commaIdx = cleanTail.indexOf(",");
+            if (commaIdx !== -1) {
+              formattedImageTail = cleanTail.slice(commaIdx + 1).trim();
+            } else {
+              formattedImageTail = cleanTail;
+            }
+          } else {
+            formattedImageTail = cleanTail;
+          }
         }
       }
 
@@ -884,9 +913,10 @@ IMPORTANT RULES:
         "The model poses naturally and gracefully with subtle gentle breathing movements, keeping the product design, clothing prints, patterns, logos and apparel structure completely fixed and unchanged. Highly detailed, 4k photorealistic cinematic lighting.";
 
       // Build payload matching exact Kling AI image2video specification
+      // NOTE: Kling AI API requires mode: "pro" when image_tail (end frame) is used.
       const payload: Record<string, any> = {
         model_name: model_name || model || "kling-v2-6",
-        mode: mode === "std" ? "std" : "pro",
+        mode: formattedImageTail ? "pro" : (mode === "std" ? "std" : "pro"),
         duration: String(duration || "5"),
         aspect_ratio: aspect_ratio || "9:16",
         multi_shot: Boolean(multi_shot),
@@ -903,6 +933,10 @@ IMPORTANT RULES:
             : { enabled: false },
       };
 
+      if (formattedImageTail) {
+        payload.image_tail = formattedImageTail;
+      }
+
       console.log(
         "[Kling AI Video Request] Model:",
         payload.model_name,
@@ -913,7 +947,15 @@ IMPORTANT RULES:
         "Aspect:",
         payload.aspect_ratio,
         "CFG:",
-        payload.cfg_scale
+        payload.cfg_scale,
+        "Has End Frame (image_tail):",
+        Boolean(payload.image_tail),
+        "End Frame Info:",
+        payload.image_tail
+          ? payload.image_tail.startsWith("http")
+            ? payload.image_tail
+            : `${payload.image_tail.slice(0, 30)}... (${payload.image_tail.length} chars)`
+          : "none"
       );
 
       const targetUrl = `${cleanBaseUrl}/v1/videos/image2video`;
@@ -928,6 +970,18 @@ IMPORTANT RULES:
 
       const data = await response.json().catch(() => ({}));
 
+      const requestPreview = {
+        ...payload,
+        image:
+          typeof payload.image === "string" && payload.image.length > 60
+            ? `${payload.image.slice(0, 40)}... (${payload.image.length} bytes)`
+            : payload.image,
+        image_tail:
+          payload.image_tail && typeof payload.image_tail === "string" && payload.image_tail.length > 60
+            ? `${payload.image_tail.slice(0, 40)}... (${payload.image_tail.length} bytes)`
+            : payload.image_tail,
+      };
+
       if (!response.ok || (data.code !== undefined && data.code !== 0)) {
         let errMsg = data.message || data.error?.message || data.error || `Lỗi máy chủ Kling AI (HTTP ${response.status})`;
         if (response.status === 401 || data.code === 1001) {
@@ -938,12 +992,8 @@ IMPORTANT RULES:
         return res.status(response.status || 400).json({
           error: errMsg,
           details: data,
-          requestPayloadPreview: {
-            ...payload,
-            image: typeof payload.image === "string" && payload.image.length > 60
-              ? `${payload.image.slice(0, 40)}... (${payload.image.length} bytes)`
-              : payload.image,
-          },
+          requestPayloadPreview: requestPreview,
+          loggedBody: requestPreview,
         });
       }
 
@@ -952,6 +1002,8 @@ IMPORTANT RULES:
         return res.status(500).json({
           error: "Kling AI không trả về task_id.",
           details: data,
+          requestPayloadPreview: requestPreview,
+          loggedBody: requestPreview,
         });
       }
 
@@ -961,12 +1013,8 @@ IMPORTANT RULES:
         taskId,
         status: rawStatus,
         message: data.message || "Tác vụ tạo video đã được gửi tới Kling AI thành công.",
-        requestPayloadPreview: {
-          ...payload,
-          image: typeof payload.image === "string" && payload.image.length > 60
-            ? `${payload.image.slice(0, 40)}... (${payload.image.length} bytes)`
-            : payload.image,
-        },
+        requestPayloadPreview: requestPreview,
+        loggedBody: requestPreview,
       });
     } catch (err: any) {
       console.error("Lỗi gửi tác vụ tạo video Kling:", err);

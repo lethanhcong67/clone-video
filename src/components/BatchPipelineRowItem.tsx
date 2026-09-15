@@ -42,6 +42,9 @@ import {
   UploadCloud,
   Plus,
   ImagePlus,
+  ArrowLeftRight,
+  Image,
+  Images,
 } from 'lucide-react';
 import { AppliedReplacementConfig, BatchImageItem, BatchSettings, OutfitReference, ApiConfig } from '../types';
 import { fileToDataUrl, downloadImage, downloadVideo } from '../utils/imageUtils';
@@ -62,6 +65,7 @@ interface BatchPipelineRowItemProps {
   onOpenLightbox: (url: string, title: string) => void;
   onGenerateKlingVideo: (item: BatchImageItem) => void;
   onGenerateInstantVideo: (item: BatchImageItem) => void;
+  allItems?: BatchImageItem[];
 }
 
 export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
@@ -79,12 +83,16 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
   onOpenLightbox,
   onGenerateKlingVideo,
   onGenerateInstantVideo,
+  allItems = [],
 }) => {
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const [isFullPromptModalOpen, setIsFullPromptModalOpen] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [localPrompt, setLocalPrompt] = useState<string>('');
   const [isSavedToast, setIsSavedToast] = useState(false);
+  const [isDragOverStart, setIsDragOverStart] = useState(false);
+  const [isDragOverEnd, setIsDragOverEnd] = useState(false);
+  const [isGalleryPickerOpen, setIsGalleryPickerOpen] = useState<'start' | 'end' | null>(null);
 
   const isRowProcessing = item.status === 'processing';
   const isRowCompleted = item.status === 'completed' && Boolean(item.resultImageUrl);
@@ -260,7 +268,163 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
     downloadVideo(url, `video_${baseName}${ext}`);
   };
 
+  const startFrameInputRef = useRef<HTMLInputElement>(null);
+  const endFrameInputRef = useRef<HTMLInputElement>(null);
 
+  const effectiveStartImage = item.videoStartImageUrl || item.resultImageUrl || item.dataUrl;
+  const effectiveStartName = item.videoStartImageName || (item.resultImageUrl ? `Ảnh mới: ${item.name}` : `Ảnh gốc: ${item.name}`);
+
+  const handleUploadStartFrame = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      onUpdateItem(item.id, {
+        videoStartImageUrl: dataUrl,
+        videoStartImageName: file.name,
+      });
+    } catch (err) {
+      console.error('Lỗi đọc ảnh đầu:', err);
+    }
+    if (startFrameInputRef.current) startFrameInputRef.current.value = '';
+  };
+
+  const handleUploadEndFrame = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      onUpdateItem(item.id, {
+        videoEndImageUrl: dataUrl,
+        videoEndImageName: file.name,
+      });
+    } catch (err) {
+      console.error('Lỗi đọc ảnh cuối:', err);
+    }
+    if (endFrameInputRef.current) endFrameInputRef.current.value = '';
+  };
+
+  const handleSwapStartEndFrames = () => {
+    const currentStart = effectiveStartImage;
+    const currentEnd = item.videoEndImageUrl;
+    if (!currentEnd) return;
+    onUpdateItem(item.id, {
+      videoStartImageUrl: currentEnd,
+      videoStartImageName: item.videoEndImageName || 'Ảnh cuối',
+      videoEndImageUrl: currentStart,
+      videoEndImageName: effectiveStartName,
+    });
+  };
+
+  const handleRemoveEndFrame = () => {
+    onUpdateItem(item.id, {
+      videoEndImageUrl: undefined,
+      videoEndImageName: undefined,
+    });
+  };
+
+  const handleResetStartFrame = () => {
+    onUpdateItem(item.id, {
+      videoStartImageUrl: undefined,
+      videoStartImageName: undefined,
+    });
+  };
+
+  const handleDropOnStartFrame = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOverStart(false);
+
+    // 1. Files dropped from OS
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type.startsWith('image/')) {
+        try {
+          const dataUrl = await fileToDataUrl(file);
+          onUpdateItem(item.id, {
+            videoStartImageUrl: dataUrl,
+            videoStartImageName: file.name,
+          });
+        } catch (err) {
+          console.error('Lỗi đọc ảnh thả vào:', err);
+        }
+        return;
+      }
+    }
+
+    // 2. JSON data transfer (dragged from strip, column 1, column 3)
+    const jsonStr = e.dataTransfer.getData('application/json');
+    if (jsonStr) {
+      try {
+        const data = JSON.parse(jsonStr);
+        if (data.url) {
+          onUpdateItem(item.id, {
+            videoStartImageUrl: data.url,
+            videoStartImageName: data.name || 'Ảnh đã chọn',
+          });
+          return;
+        }
+      } catch {
+        // continue
+      }
+    }
+
+    // 3. Plain text data
+    const plainText = e.dataTransfer.getData('text/plain');
+    if (plainText && (plainText.startsWith('data:image') || plainText.startsWith('http') || plainText.startsWith('blob:'))) {
+      onUpdateItem(item.id, {
+        videoStartImageUrl: plainText,
+        videoStartImageName: 'Ảnh kéo thả',
+      });
+    }
+  };
+
+  const handleDropOnEndFrame = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOverEnd(false);
+
+    // 1. Files dropped from OS
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type.startsWith('image/')) {
+        try {
+          const dataUrl = await fileToDataUrl(file);
+          onUpdateItem(item.id, {
+            videoEndImageUrl: dataUrl,
+            videoEndImageName: file.name,
+          });
+        } catch (err) {
+          console.error('Lỗi đọc ảnh thả vào:', err);
+        }
+        return;
+      }
+    }
+
+    // 2. JSON data transfer
+    const jsonStr = e.dataTransfer.getData('application/json');
+    if (jsonStr) {
+      try {
+        const data = JSON.parse(jsonStr);
+        if (data.url) {
+          onUpdateItem(item.id, {
+            videoEndImageUrl: data.url,
+            videoEndImageName: data.name || 'Ảnh đã chọn',
+          });
+          return;
+        }
+      } catch {
+        // continue
+      }
+    }
+
+    // 3. Plain text data
+    const plainText = e.dataTransfer.getData('text/plain');
+    if (plainText && (plainText.startsWith('data:image') || plainText.startsWith('http') || plainText.startsWith('blob:'))) {
+      onUpdateItem(item.id, {
+        videoEndImageUrl: plainText,
+        videoEndImageName: 'Ảnh kéo thả',
+      });
+    }
+  };
 
   return (
     <div
@@ -350,12 +514,29 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
               </div>
             </div>
 
-            <div className="relative flex-1 w-full min-h-0 rounded-lg overflow-hidden bg-stone-900/5 border border-stone-200/80 shadow-2xs group flex items-center justify-center my-1">
+            <div
+              draggable={true}
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', item.dataUrl);
+                e.dataTransfer.setData(
+                  'application/json',
+                  JSON.stringify({
+                    url: item.dataUrl,
+                    name: `Ảnh gốc: ${item.name}`,
+                    type: 'original-image',
+                    itemId: item.id,
+                  })
+                );
+                e.dataTransfer.effectAllowed = 'copyMove';
+              }}
+              className="relative flex-1 w-full min-h-0 rounded-lg overflow-hidden bg-stone-900/5 border border-stone-200/80 shadow-2xs group flex items-center justify-center my-1 cursor-grab active:cursor-grabbing"
+              title="Kéo ảnh gốc này thả vào ô Ảnh Đầu hoặc Ảnh Cuối của Video"
+            >
               <img
                 src={item.dataUrl}
                 alt={`Original ${item.name}`}
                 referrerPolicy="no-referrer"
-                className="w-full h-full object-contain transition-all duration-200"
+                className="w-full h-full object-contain transition-all duration-200 pointer-events-none"
               />
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                 <button
@@ -907,14 +1088,45 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
             )}
 
             {/* Display Area for New Image */}
-            <div className="relative flex-1 w-full min-h-0 rounded-lg overflow-hidden bg-stone-900/5 border border-stone-200/80 shadow-2xs flex items-center justify-center my-1">
-              {isRowCompleted && item.resultImageUrl ? (
+            <div
+              draggable={isRowCompleted && Boolean(item.resultImageUrl)}
+              onDragStart={(e) => {
+                if (!item.resultImageUrl) return;
+                e.dataTransfer.setData('text/plain', item.resultImageUrl);
+                e.dataTransfer.setData(
+                  'application/json',
+                  JSON.stringify({
+                    url: item.resultImageUrl,
+                    name: `Ảnh mới: ${item.name}`,
+                    type: 'result-image',
+                    itemId: item.id,
+                  })
+                );
+                e.dataTransfer.effectAllowed = 'copyMove';
+              }}
+              className={`relative flex-1 w-full min-h-0 rounded-lg overflow-hidden bg-stone-900/5 border border-stone-200/80 shadow-2xs flex items-center justify-center my-1 ${
+                isRowCompleted && item.resultImageUrl ? 'cursor-grab active:cursor-grabbing' : ''
+              }`}
+              title={isRowCompleted && item.resultImageUrl ? 'Kéo ảnh AI này thả vào ô Ảnh Đầu hoặc Ảnh Cuối Video' : undefined}
+            >
+              {isRowProcessing ? (
+                <div className="flex flex-col items-center justify-center p-4 text-center bg-indigo-50/70 border border-indigo-200/80 rounded-lg w-full h-full animate-in fade-in duration-200">
+                  <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-2" />
+                  <p className="text-xs font-bold text-stone-900">
+                    {item.resultImageUrl ? 'Đang tạo lại ảnh bằng AI...' : 'Đang tạo ảnh bằng AI...'}
+                  </p>
+                  <p className="text-[11px] text-stone-500 mt-0.5">Xóa phụ đề & áp dụng nhân vật/sản phẩm</p>
+                  <span className="mt-2 text-[10px] text-indigo-700 font-bold bg-indigo-100/80 px-2.5 py-0.5 rounded-full border border-indigo-200 animate-pulse">
+                    Mô hình AI đang kết xuất...
+                  </span>
+                </div>
+              ) : isRowCompleted && item.resultImageUrl ? (
                 <div className="relative w-full h-full group flex items-center justify-center">
                   <img
                     src={item.resultImageUrl}
                     alt={`Result ${item.name}`}
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-contain transition-all duration-200"
+                    className="w-full h-full object-contain transition-all duration-200 pointer-events-none"
                   />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                     <button
@@ -935,12 +1147,6 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                     </button>
                   </div>
                 </div>
-              ) : isRowProcessing ? (
-                <div className="flex flex-col items-center justify-center p-4 text-center bg-indigo-50/50 w-full h-full">
-                  <Loader2 className="w-7 h-7 text-indigo-600 animate-spin mb-2" />
-                  <p className="text-xs font-bold text-stone-800">Đang tạo ảnh bằng AI...</p>
-                  <p className="text-[11px] text-stone-500 mt-0.5">Xóa phụ đề & áp dụng nhân vật/sản phẩm</p>
-                </div>
               ) : isRowError ? (
                 <div className="flex flex-col items-center justify-center p-3 text-center bg-rose-50/70 w-full h-full rounded-lg border border-rose-200">
                   <AlertCircle className="w-6 h-6 text-rose-500 mb-1" />
@@ -953,7 +1159,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                     onClick={() => onProcessSingleItem(item)}
                     className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 shadow-xs transition-colors cursor-pointer"
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
+                    <RefreshCw className="w-3 h-3" />
                     Thử lại
                   </button>
                 </div>
@@ -979,7 +1185,12 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
           </div>
 
           <div className="mt-2 flex items-center justify-between text-[11px] text-stone-500 pt-2 border-t border-stone-200/60 shrink-0">
-            {isRowCompleted ? (
+            {isRowProcessing ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 animate-pulse">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                <span>Đang tạo {item.resultImageUrl ? 'lại' : ''} ảnh AI...</span>
+              </span>
+            ) : isRowCompleted ? (
               <>
                 <span className="text-emerald-700 font-medium">Ảnh AI đã sẵn sàng</span>
                 <div className="flex items-center gap-2">
@@ -1038,65 +1249,353 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
 
             {/* Display / Generator Area for Video */}
             <div className="relative flex-1 w-full min-h-0 rounded-lg overflow-hidden flex flex-col justify-between my-1">
+              <input
+                ref={startFrameInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleUploadStartFrame}
+              />
+              <input
+                ref={endFrameInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleUploadEndFrame}
+              />
               
-              {/* STATE 1: Completed Video */}
-              {hasVideo && item.videoUrl ? (
-                <div className="flex-1 flex flex-col min-h-0 justify-between">
-                  <div className="relative flex-1 w-full min-h-0 rounded-lg overflow-hidden bg-black flex items-center justify-center group">
-                    <video
-                      src={item.videoUrl}
-                      controls
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-
-                  {/* Optional prompt modification drawer when video already exists */}
-                  {isPromptExpanded && (
-                    <div className="mt-2 p-2.5 bg-white rounded-lg border border-violet-200 shadow-2xs space-y-1.5 animate-in fade-in duration-200">
-                      <textarea
-                        rows={2}
-                        value={item.videoPrompt || ''}
-                        onChange={(e) => onUpdateItem(item.id, { videoPrompt: e.target.value })}
-                        placeholder="Nhập prompt video mới để tạo lại..."
-                        className="w-full text-xs rounded border border-stone-300 p-1.5 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-violet-500 bg-stone-50/50 resize-none"
-                      />
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsPromptExpanded(false);
-                            onGenerateKlingVideo(item);
-                          }}
-                          disabled={isVideoGenerating}
-                          className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50"
-                        >
-                          <Play className="w-3 h-3 fill-current" />
-                          <span>Tạo video mới</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : isVideoGenerating ? (
-                /* STATE 2: Video Generating Progress */
-                <div className="flex flex-col items-center justify-center p-4 text-center bg-violet-50/70 border border-violet-200/80 rounded-lg w-full h-full">
-                  <Loader2 className="w-7 h-7 text-violet-600 animate-spin mb-2" />
-                  <p className="text-xs font-bold text-stone-800">Đang tạo video với Kling AI...</p>
-                  <p className="text-[11px] text-stone-500 mt-0.5">
-                    {item.videoTaskId ? `Task: ${item.videoTaskId.slice(0, 14)}...` : 'Đang gửi yêu cầu tạo video...'}
+              {/* STATE 1: Video Generating / Regenerating Progress */}
+              {isVideoGenerating ? (
+                <div className="flex flex-col items-center justify-center p-4 text-center bg-violet-50/80 border border-violet-200/90 rounded-lg w-full h-full animate-in fade-in duration-200">
+                  <Loader2 className="w-8 h-8 text-violet-600 animate-spin mb-2" />
+                  <p className="text-xs font-bold text-stone-900">
+                    {item.videoUrl ? 'Đang tạo lại video với Kling AI...' : 'Đang tạo video với Kling AI...'}
                   </p>
-                  <div className="w-36 bg-stone-200 h-1.5 rounded-full mt-2.5 overflow-hidden">
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    {item.videoTaskId ? `Task ID: ${item.videoTaskId.slice(0, 16)}...` : 'Đang gửi yêu cầu tạo video đến Kling AI...'}
+                  </p>
+                  <div className="w-40 bg-stone-200 h-2 rounded-full mt-3 overflow-hidden shadow-inner">
                     <div
-                      className="bg-violet-600 h-full transition-all duration-300"
+                      className="bg-gradient-to-r from-violet-600 to-indigo-600 h-full transition-all duration-300"
                       style={{ width: `${item.videoProgress || 20}%` }}
                     />
                   </div>
-                  <span className="text-[10px] font-bold text-violet-600 mt-1">{item.videoProgress || 20}%</span>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className="text-[11px] font-bold text-violet-700">{item.videoProgress || 20}%</span>
+                    <span className="text-[10px] text-stone-400">• Render chuyển động AI</span>
+                  </div>
                 </div>
+              ) : hasVideo && item.videoUrl ? (
+                isPromptExpanded ? (
+                  /* When editing prompt & reference frames: hide video, show full editor */
+                  <div className="flex-1 flex flex-col justify-between p-2 sm:p-2.5 bg-white rounded-lg border border-violet-200/80 shadow-2xs overflow-hidden animate-in fade-in duration-200">
+                    <div className="space-y-2 flex-1 flex flex-col min-h-0">
+                      {/* Header: Reference Frames Title */}
+                      <div className="flex items-center justify-between gap-1 shrink-0">
+                        <span className="text-[11px] font-bold text-violet-950 flex items-center gap-1">
+                          <Film className="w-3.5 h-3.5 text-violet-600" />
+                          <span>Khung hình tham chiếu:</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-medium text-violet-700 bg-violet-50 border border-violet-200/70 px-1.5 py-0.5 rounded">
+                            {item.videoEndImageUrl ? '2 Khung hình (Đầu & Cuối)' : '1 Khung hình đầu'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsPromptExpanded(false)}
+                            className="text-stone-400 hover:text-stone-700 p-0.5 rounded cursor-pointer"
+                            title="Đóng sửa (quay lại xem video)"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* TWO REFERENCE FRAMES: START & END */}
+                      <div className="grid grid-cols-2 gap-1.5 shrink-0 relative items-center">
+                        {/* 1. START FRAME (FIRST FRAME) */}
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'copy';
+                            setIsDragOverStart(true);
+                          }}
+                          onDragLeave={() => setIsDragOverStart(false)}
+                          onDrop={handleDropOnStartFrame}
+                          className={`flex flex-col bg-stone-50 rounded-lg p-1.5 border relative group transition-all ${
+                            isDragOverStart
+                              ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300 scale-[1.02]'
+                              : 'border-stone-200/90 hover:border-emerald-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold text-emerald-800 flex items-center gap-1 truncate">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                              <span>1. Ảnh đầu</span>
+                            </span>
+                            <div className="flex items-center gap-1">
+                              {item.videoStartImageUrl && (
+                                <button
+                                  type="button"
+                                  onClick={handleResetStartFrame}
+                                  className="text-[9px] text-stone-400 hover:text-stone-700 underline cursor-pointer"
+                                  title="Khôi phục ảnh tạo mới mặc định"
+                                >
+                                  Mặc định
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setIsGalleryPickerOpen('start')}
+                                className="text-[9px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-0.5 bg-emerald-100/80 hover:bg-emerald-200/80 px-1 py-0.5 rounded cursor-pointer transition-colors"
+                                title="Chọn từ danh sách ảnh đã tạo"
+                              >
+                                <Images className="w-2.5 h-2.5" />
+                                <span>Chọn</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <div
+                            className={`relative aspect-[4/3] w-full rounded-md overflow-hidden bg-stone-900/10 border flex items-center justify-center transition-colors ${
+                              isDragOverStart ? 'border-emerald-500 bg-emerald-100/50' : 'border-stone-200'
+                            }`}
+                          >
+                            {isDragOverStart ? (
+                              <div className="flex flex-col items-center justify-center p-1 text-center text-emerald-700 font-bold animate-pulse">
+                                <Plus className="w-5 h-5 mb-0.5" />
+                                <span className="text-[9px]">Thả vào làm Ảnh Đầu!</span>
+                              </div>
+                            ) : effectiveStartImage ? (
+                              <>
+                                <img
+                                  src={effectiveStartImage}
+                                  alt="Start frame"
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-contain pointer-events-none"
+                                />
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenLightbox(effectiveStartImage, `Ảnh đầu video: ${effectiveStartName}`)}
+                                    className="p-1 rounded bg-white text-stone-900 hover:bg-stone-100 cursor-pointer shadow-xs"
+                                    title="Phóng to ảnh đầu"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsGalleryPickerOpen('start')}
+                                    className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer shadow-xs"
+                                    title="Chọn từ danh sách ảnh đã tạo"
+                                  >
+                                    <Images className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => startFrameInputRef.current?.click()}
+                                    className="p-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer shadow-xs"
+                                    title="Tải ảnh đầu khác từ máy tính"
+                                  >
+                                    <ImagePlus className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setIsGalleryPickerOpen('start')}
+                                className="w-full h-full flex flex-col items-center justify-center text-stone-400 hover:text-indigo-600 cursor-pointer"
+                              >
+                                <Plus className="w-4 h-4 mb-0.5" />
+                                <span className="text-[9px] font-semibold">Chọn ảnh</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* SWAP BUTTON (IN THE MIDDLE) */}
+                        {item.videoEndImageUrl && (
+                          <button
+                            type="button"
+                            onClick={handleSwapStartEndFrames}
+                            className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-white text-violet-700 hover:text-white hover:bg-violet-600 border border-violet-300 shadow-md flex items-center justify-center transition-all cursor-pointer"
+                            title="Hoán đổi Ảnh Đầu ⇄ Ảnh Cuối"
+                          >
+                            <ArrowLeftRight className="w-3 h-3" />
+                          </button>
+                        )}
+
+                        {/* 2. END FRAME (LAST FRAME / TAIL) */}
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'copy';
+                            setIsDragOverEnd(true);
+                          }}
+                          onDragLeave={() => setIsDragOverEnd(false)}
+                          onDrop={handleDropOnEndFrame}
+                          className={`flex flex-col bg-stone-50 rounded-lg p-1.5 border relative group transition-all ${
+                            isDragOverEnd
+                              ? 'border-violet-500 bg-violet-50 ring-2 ring-violet-300 scale-[1.02]'
+                              : 'border-stone-200/90 hover:border-violet-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold text-violet-800 flex items-center gap-1 truncate">
+                              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0"></span>
+                              <span>2. Ảnh cuối</span>
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setIsGalleryPickerOpen('end')}
+                                className="text-[9px] text-violet-700 hover:text-violet-800 font-bold flex items-center gap-0.5 bg-violet-100/80 hover:bg-violet-200/80 px-1 py-0.5 rounded cursor-pointer transition-colors"
+                                title="Chọn từ danh sách ảnh đã tạo"
+                              >
+                                <Images className="w-2.5 h-2.5" />
+                                <span>Chọn</span>
+                              </button>
+                              {item.videoEndImageUrl && (
+                                <button
+                                  type="button"
+                                  onClick={handleRemoveEndFrame}
+                                  className="text-stone-400 hover:text-rose-600 cursor-pointer p-0.5 rounded"
+                                  title="Gỡ bỏ ảnh cuối"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div
+                            className={`relative aspect-[4/3] w-full rounded-md overflow-hidden bg-stone-900/10 border flex items-center justify-center transition-colors ${
+                              isDragOverEnd ? 'border-violet-500 bg-violet-100/50' : 'border-stone-200'
+                            }`}
+                          >
+                            {isDragOverEnd ? (
+                              <div className="flex flex-col items-center justify-center p-1 text-center text-violet-700 font-bold animate-pulse">
+                                <Plus className="w-5 h-5 mb-0.5" />
+                                <span className="text-[9px]">Thả vào làm Ảnh Cuối!</span>
+                              </div>
+                            ) : item.videoEndImageUrl ? (
+                              <>
+                                <img
+                                  src={item.videoEndImageUrl}
+                                  alt="End frame"
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-contain pointer-events-none"
+                                />
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenLightbox(item.videoEndImageUrl!, `Ảnh cuối video: ${item.videoEndImageName || item.name}`)}
+                                    className="p-1 rounded bg-white text-stone-900 hover:bg-stone-100 cursor-pointer shadow-xs"
+                                    title="Phóng to ảnh cuối"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsGalleryPickerOpen('end')}
+                                    className="p-1 rounded bg-violet-600 text-white hover:bg-violet-700 cursor-pointer shadow-xs"
+                                    title="Chọn từ danh sách ảnh đã tạo"
+                                  >
+                                    <Images className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => endFrameInputRef.current?.click()}
+                                    className="p-1 rounded bg-stone-700 text-white hover:bg-stone-800 cursor-pointer shadow-xs"
+                                    title="Đổi ảnh cuối khác từ máy"
+                                  >
+                                    <ImagePlus className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleRemoveEndFrame}
+                                    className="p-1 rounded bg-rose-600 text-white hover:bg-rose-700 cursor-pointer shadow-xs"
+                                    title="Gỡ bỏ"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setIsGalleryPickerOpen('end')}
+                                className="w-full h-full flex flex-col items-center justify-center p-1 text-center border border-dashed border-stone-300 hover:border-violet-400 rounded hover:bg-violet-50/50 transition-colors text-stone-400 hover:text-violet-600 cursor-pointer group"
+                                title="Nhấp để chọn hoặc kéo thả ảnh kết thúc (End frame) cho video"
+                              >
+                                <Plus className="w-3.5 h-3.5 mb-0.5 group-hover:scale-110 transition-transform" />
+                                <span className="text-[9px] font-bold">+ Ảnh cuối</span>
+                                <span className="text-[8px] text-stone-400">(Kéo/Chọn)</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Video Prompt Textarea */}
+                      <div className="flex-1 min-h-0 flex flex-col">
+                        <div className="flex items-center justify-between mb-1 shrink-0">
+                          <span className="text-[10px] font-bold text-stone-700">Prompt chuyển động:</span>
+                        </div>
+                        <textarea
+                          rows={2}
+                          value={item.videoPrompt || ''}
+                          onChange={(e) => onUpdateItem(item.id, { videoPrompt: e.target.value })}
+                          placeholder="Mô tả chuyển động video (ví dụ: người mẫu xoay nhẹ, quay chậm cinematic, giữ nguyên form áo)..."
+                          className="w-full flex-1 min-h-[50px] text-[11px] rounded-md border border-stone-300 p-1.5 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1.5 focus:ring-violet-500 bg-stone-50/50 resize-none leading-tight"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="mt-1.5 pt-1.5 border-t border-stone-100 flex items-center justify-between gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setIsPromptExpanded(false)}
+                        className="px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-medium transition-colors cursor-pointer"
+                      >
+                        Quay lại video
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPromptExpanded(false);
+                          onGenerateKlingVideo({
+                            ...item,
+                            videoStartImageUrl: effectiveStartImage,
+                            videoEndImageUrl: item.videoEndImageUrl || undefined,
+                          });
+                        }}
+                        disabled={isVideoGenerating}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 active:scale-95 text-white text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50"
+                      >
+                        <Play className="w-3 h-3 fill-current" />
+                        <span>Tạo video mới</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* When not editing: show video player */
+                  <div className="flex-1 flex flex-col min-h-0 justify-between">
+                    <div className="relative flex-1 w-full min-h-0 rounded-lg overflow-hidden bg-black flex items-center justify-center group">
+                      <video
+                        src={item.videoUrl}
+                        controls
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  </div>
+                )
               ) : item.videoStatus === 'error' ? (
                 /* STATE 3: Video Error */
                 <div className="flex flex-col items-center justify-center p-3 text-center bg-rose-50/70 border border-rose-200 rounded-lg w-full h-full">
@@ -1127,41 +1626,278 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                   </div>
                 </div>
               ) : isRowCompleted ? (
-                /* STATE 4: Ready for Video Creation (Direct Manual Video Prompt Input) */
-                <div className="flex-1 flex flex-col justify-between p-2.5 sm:p-3 bg-white rounded-lg border border-violet-200/80 shadow-2xs">
+                /* STATE 4: Ready for Video Creation with First & Last Frame Reference */
+                <div className="flex-1 flex flex-col justify-between p-2 sm:p-2.5 bg-white rounded-lg border border-violet-200/80 shadow-2xs overflow-hidden">
+
                   <div className="space-y-2 flex-1 flex flex-col min-h-0">
-                    {/* Header: Manual Prompt Label */}
-                    <div className="flex items-center justify-between gap-1.5 shrink-0">
-                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-stone-800 shrink-0">
+                    {/* Header: Reference Frames Title */}
+                    <div className="flex items-center justify-between gap-1 shrink-0">
+                      <span className="text-[11px] font-bold text-violet-950 flex items-center gap-1">
                         <Film className="w-3.5 h-3.5 text-violet-600" />
-                        <span>Prompt video:</span>
-                      </div>
-                      <span className="text-[10px] text-violet-600 font-medium bg-violet-50 px-1.5 py-0.5 rounded border border-violet-100">
-                        Nhập thủ công
+                        <span>Khung hình tham chiếu:</span>
                       </span>
+                      <span className="text-[10px] font-medium text-violet-700 bg-violet-50 border border-violet-200/70 px-1.5 py-0.5 rounded">
+                        {item.videoEndImageUrl ? '2 Khung hình (Đầu & Cuối)' : '1 Khung hình đầu'}
+                      </span>
+                    </div>
+
+                    {/* TWO REFERENCE FRAMES: START & END */}
+                    <div className="grid grid-cols-2 gap-1.5 shrink-0 relative items-center">
+                      {/* 1. START FRAME (FIRST FRAME) */}
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'copy';
+                          setIsDragOverStart(true);
+                        }}
+                        onDragLeave={() => setIsDragOverStart(false)}
+                        onDrop={handleDropOnStartFrame}
+                        className={`flex flex-col bg-stone-50 rounded-lg p-1.5 border relative group transition-all ${
+                          isDragOverStart
+                            ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300 scale-[1.02]'
+                            : 'border-stone-200/90 hover:border-emerald-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold text-emerald-800 flex items-center gap-1 truncate">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                            <span>1. Ảnh đầu</span>
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {item.videoStartImageUrl && (
+                              <button
+                                type="button"
+                                onClick={handleResetStartFrame}
+                                className="text-[9px] text-stone-400 hover:text-stone-700 underline cursor-pointer"
+                                title="Khôi phục ảnh tạo mới mặc định"
+                              >
+                                Mặc định
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setIsGalleryPickerOpen('start')}
+                              className="text-[9px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-0.5 bg-emerald-100/80 hover:bg-emerald-200/80 px-1 py-0.5 rounded cursor-pointer transition-colors"
+                              title="Chọn từ danh sách ảnh đã tạo"
+                            >
+                              <Images className="w-2.5 h-2.5" />
+                              <span>Chọn</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          className={`relative aspect-[4/3] w-full rounded-md overflow-hidden bg-stone-900/10 border flex items-center justify-center transition-colors ${
+                            isDragOverStart ? 'border-emerald-500 bg-emerald-100/50' : 'border-stone-200'
+                          }`}
+                        >
+                          {isDragOverStart ? (
+                            <div className="flex flex-col items-center justify-center p-1 text-center text-emerald-700 font-bold animate-pulse">
+                              <Plus className="w-5 h-5 mb-0.5" />
+                              <span className="text-[9px]">Thả vào làm Ảnh Đầu!</span>
+                            </div>
+                          ) : effectiveStartImage ? (
+                            <>
+                              <img
+                                src={effectiveStartImage}
+                                alt="Start frame"
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-contain pointer-events-none"
+                              />
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenLightbox(effectiveStartImage, `Ảnh đầu video: ${effectiveStartName}`)}
+                                  className="p-1 rounded bg-white text-stone-900 hover:bg-stone-100 cursor-pointer shadow-xs"
+                                  title="Phóng to ảnh đầu"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsGalleryPickerOpen('start')}
+                                  className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer shadow-xs"
+                                  title="Chọn từ danh sách ảnh đã tạo"
+                                >
+                                  <Images className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => startFrameInputRef.current?.click()}
+                                  className="p-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer shadow-xs"
+                                  title="Tải ảnh đầu khác từ máy tính"
+                                >
+                                  <ImagePlus className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setIsGalleryPickerOpen('start')}
+                              className="w-full h-full flex flex-col items-center justify-center text-stone-400 hover:text-indigo-600 cursor-pointer"
+                            >
+                              <Plus className="w-4 h-4 mb-0.5" />
+                              <span className="text-[9px] font-semibold">Chọn ảnh</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* SWAP BUTTON (IN THE MIDDLE) */}
+                      {item.videoEndImageUrl && (
+                        <button
+                          type="button"
+                          onClick={handleSwapStartEndFrames}
+                          className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-white text-violet-700 hover:text-white hover:bg-violet-600 border border-violet-300 shadow-md flex items-center justify-center transition-all cursor-pointer"
+                          title="Hoán đổi Ảnh Đầu ⇄ Ảnh Cuối"
+                        >
+                          <ArrowLeftRight className="w-3 h-3" />
+                        </button>
+                      )}
+
+                      {/* 2. END FRAME (LAST FRAME / TAIL) */}
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'copy';
+                          setIsDragOverEnd(true);
+                        }}
+                        onDragLeave={() => setIsDragOverEnd(false)}
+                        onDrop={handleDropOnEndFrame}
+                        className={`flex flex-col bg-stone-50 rounded-lg p-1.5 border relative group transition-all ${
+                          isDragOverEnd
+                            ? 'border-violet-500 bg-violet-50 ring-2 ring-violet-300 scale-[1.02]'
+                            : 'border-stone-200/90 hover:border-violet-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold text-violet-800 flex items-center gap-1 truncate">
+                            <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0"></span>
+                            <span>2. Ảnh cuối</span>
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setIsGalleryPickerOpen('end')}
+                              className="text-[9px] text-violet-700 hover:text-violet-800 font-bold flex items-center gap-0.5 bg-violet-100/80 hover:bg-violet-200/80 px-1 py-0.5 rounded cursor-pointer transition-colors"
+                              title="Chọn từ danh sách ảnh đã tạo"
+                            >
+                              <Images className="w-2.5 h-2.5" />
+                              <span>Chọn</span>
+                            </button>
+                            {item.videoEndImageUrl && (
+                              <button
+                                type="button"
+                                onClick={handleRemoveEndFrame}
+                                className="text-stone-400 hover:text-rose-600 cursor-pointer p-0.5 rounded"
+                                title="Gỡ bỏ ảnh cuối"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          className={`relative aspect-[4/3] w-full rounded-md overflow-hidden bg-stone-900/10 border flex items-center justify-center transition-colors ${
+                            isDragOverEnd ? 'border-violet-500 bg-violet-100/50' : 'border-stone-200'
+                          }`}
+                        >
+                          {isDragOverEnd ? (
+                            <div className="flex flex-col items-center justify-center p-1 text-center text-violet-700 font-bold animate-pulse">
+                              <Plus className="w-5 h-5 mb-0.5" />
+                              <span className="text-[9px]">Thả vào làm Ảnh Cuối!</span>
+                            </div>
+                          ) : item.videoEndImageUrl ? (
+                            <>
+                              <img
+                                src={item.videoEndImageUrl}
+                                alt="End frame"
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-contain pointer-events-none"
+                              />
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenLightbox(item.videoEndImageUrl!, `Ảnh cuối video: ${item.videoEndImageName || item.name}`)}
+                                  className="p-1 rounded bg-white text-stone-900 hover:bg-stone-100 cursor-pointer shadow-xs"
+                                  title="Phóng to ảnh cuối"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsGalleryPickerOpen('end')}
+                                  className="p-1 rounded bg-violet-600 text-white hover:bg-violet-700 cursor-pointer shadow-xs"
+                                  title="Chọn từ danh sách ảnh đã tạo"
+                                >
+                                  <Images className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => endFrameInputRef.current?.click()}
+                                  className="p-1 rounded bg-stone-700 text-white hover:bg-stone-800 cursor-pointer shadow-xs"
+                                  title="Đổi ảnh cuối khác từ máy"
+                                >
+                                  <ImagePlus className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleRemoveEndFrame}
+                                  className="p-1 rounded bg-rose-600 text-white hover:bg-rose-700 cursor-pointer shadow-xs"
+                                  title="Gỡ bỏ"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setIsGalleryPickerOpen('end')}
+                              className="w-full h-full flex flex-col items-center justify-center p-1 text-center border border-dashed border-stone-300 hover:border-violet-400 rounded hover:bg-violet-50/50 transition-colors text-stone-400 hover:text-violet-600 cursor-pointer group"
+                              title="Nhấp để chọn hoặc kéo thả ảnh kết thúc (End frame) cho video"
+                            >
+                              <Plus className="w-3.5 h-3.5 mb-0.5 group-hover:scale-110 transition-transform" />
+                              <span className="text-[9px] font-bold">+ Ảnh cuối</span>
+                              <span className="text-[8px] text-stone-400">(Kéo/Chọn)</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     {/* Video Prompt Textarea */}
                     <div className="flex-1 min-h-0 flex flex-col">
+                      <div className="flex items-center justify-between mb-1 shrink-0">
+                        <span className="text-[10px] font-bold text-stone-700">Prompt chuyển động:</span>
+                      </div>
                       <textarea
-                        rows={4}
+                        rows={2}
                         value={item.videoPrompt || ''}
                         onChange={(e) => onUpdateItem(item.id, { videoPrompt: e.target.value })}
-                        placeholder="Nhập prompt mô tả chuyển động video của bạn tại đây (ví dụ: người mẫu tạo dáng tự nhiên, quay chậm cinematic, giữ cố định form áo và logo)..."
-                        className="w-full flex-1 min-h-[90px] text-xs rounded-md border border-stone-300 p-2 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1.5 focus:ring-violet-500 bg-stone-50/50 resize-none leading-relaxed"
+                        placeholder="Mô tả chuyển động video (ví dụ: người mẫu xoay nhẹ, quay chậm cinematic, giữ nguyên form áo)..."
+                        className="w-full flex-1 min-h-[50px] text-[11px] rounded-md border border-stone-300 p-1.5 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1.5 focus:ring-violet-500 bg-stone-50/50 resize-none leading-tight"
                       />
                     </div>
                   </div>
 
                   {/* Submit Kling AI Video Button */}
-                  <div className="mt-2 pt-2 border-t border-stone-100 shrink-0">
+                  <div className="mt-1.5 pt-1.5 border-t border-stone-100 shrink-0">
                     <button
                       type="button"
-                      onClick={() => onGenerateKlingVideo(item)}
+                      onClick={() =>
+                        onGenerateKlingVideo({
+                          ...item,
+                          videoStartImageUrl: effectiveStartImage,
+                          videoEndImageUrl: item.videoEndImageUrl || undefined,
+                        })
+                      }
                       disabled={isVideoGenerating}
-                      className="w-full inline-flex items-center justify-center gap-2 text-xs font-bold px-3.5 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 active:scale-95 text-white shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                      className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 active:scale-95 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
                     >
-                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <Play className="w-3 h-3 fill-current" />
                       <span>Tạo video Kling AI</span>
                     </button>
                   </div>
@@ -1181,7 +1917,12 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
 
           {/* Bottom action for video */}
           <div className="mt-2 flex items-center justify-between text-[11px] text-stone-500 pt-2 border-t border-stone-200/60 shrink-0">
-            {hasVideo ? (
+            {isVideoGenerating ? (
+              <div className="flex items-center gap-1.5 text-violet-700 font-bold animate-pulse">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-600" />
+                <span>Đang tạo {item.videoUrl ? 'lại' : ''} video Kling AI...</span>
+              </div>
+            ) : hasVideo ? (
               <>
                 <span className="text-violet-700 font-semibold">Video hoàn tất</span>
                 <div className="flex items-center gap-2">
@@ -1190,12 +1931,18 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                     onClick={() => setIsPromptExpanded((prev) => !prev)}
                     className="text-stone-500 hover:text-violet-600 font-medium flex items-center gap-0.5 cursor-pointer"
                   >
-                    <span>Sửa prompt</span>
+                    <span>{isPromptExpanded ? 'Đóng sửa' : 'Sửa prompt & ảnh'}</span>
                     {isPromptExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                   </button>
                   <button
                     type="button"
-                    onClick={() => onGenerateKlingVideo(item)}
+                    onClick={() =>
+                      onGenerateKlingVideo({
+                        ...item,
+                        videoStartImageUrl: effectiveStartImage,
+                        videoEndImageUrl: item.videoEndImageUrl || undefined,
+                      })
+                    }
                     disabled={isVideoGenerating}
                     className="text-stone-500 hover:text-violet-600 font-medium flex items-center gap-1 cursor-pointer"
                   >
@@ -1395,6 +2142,199 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                   Đóng
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Gallery Picker Modal for Start / End Video Frame */}
+      {isGalleryPickerOpen && (
+        <div
+          id={`gallery-picker-modal-${item.id}`}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setIsGalleryPickerOpen(null)}
+        >
+          <div
+            className="relative max-w-2xl w-full max-h-[85vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white shadow-xs shrink-0 ${
+                    isGalleryPickerOpen === 'start' ? 'bg-emerald-600' : 'bg-violet-600'
+                  }`}
+                >
+                  <Images className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                    <span>
+                      {isGalleryPickerOpen === 'start'
+                        ? 'Chọn ảnh làm [Ảnh Đầu - Start frame]'
+                        : 'Chọn ảnh làm [Ảnh Cuối - End frame]'}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
+                      Hàng #{index + 1}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-stone-500">
+                    Nhấp vào bất kỳ ảnh nào bên dưới để gán làm khung hình tham chiếu video.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsGalleryPickerOpen(null)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Grid of Images */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-4 min-h-0">
+              {/* Section 1: Completed AI Images */}
+              <div>
+                <h4 className="text-xs font-bold text-stone-700 mb-2 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Các ảnh AI vừa tạo xong (Từ tất cả các hàng):</span>
+                </h4>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
+                  {allItems
+                    .filter((it) => it.status === 'completed' && it.resultImageUrl)
+                    .map((it, rowIdx) => {
+                      const allUrls = it.resultImageUrls && it.resultImageUrls.length > 1
+                        ? it.resultImageUrls
+                        : [it.resultImageUrl!];
+                      return allUrls.map((url, vIdx) => (
+                        <div
+                          key={`${it.id}-${vIdx}`}
+                          onClick={() => {
+                            if (isGalleryPickerOpen === 'start') {
+                              onUpdateItem(item.id, {
+                                videoStartImageUrl: url,
+                                videoStartImageName: `${it.name} ${allUrls.length > 1 ? `(Biến thể ${vIdx + 1})` : ''}`,
+                              });
+                            } else {
+                              onUpdateItem(item.id, {
+                                videoEndImageUrl: url,
+                                videoEndImageName: `${it.name} ${allUrls.length > 1 ? `(Biến thể ${vIdx + 1})` : ''}`,
+                              });
+                            }
+                            setIsGalleryPickerOpen(null);
+                          }}
+                          className="group relative aspect-[3/4] rounded-xl overflow-hidden bg-stone-900 border-2 border-stone-200 hover:border-indigo-500 cursor-pointer shadow-2xs hover:shadow-md transition-all flex flex-col justify-end p-1"
+                        >
+                          <img
+                            src={url}
+                            alt={it.name}
+                            referrerPolicy="no-referrer"
+                            className="absolute inset-0 w-full h-full object-contain group-hover:scale-105 transition-transform"
+                          />
+                          <div className="relative z-10 bg-black/75 backdrop-blur-xs p-1 rounded-md text-white">
+                            <p className="text-[9px] font-bold truncate">#{rowIdx + 1} {it.name}</p>
+                            {allUrls.length > 1 && (
+                              <span className="text-[8px] text-indigo-300">Biến thể {vIdx + 1}</span>
+                            )}
+                          </div>
+                        </div>
+                      ));
+                    })}
+                  {allItems.filter((it) => it.status === 'completed' && it.resultImageUrl).length === 0 && (
+                    <div className="col-span-full py-4 text-center text-xs text-stone-400 bg-stone-50 rounded-xl border border-dashed border-stone-200">
+                      Chưa có ảnh AI nào được tạo xong.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Section 2: Original Image & Outfit References */}
+              <div>
+                <h4 className="text-xs font-bold text-stone-700 mb-2 flex items-center gap-1.5">
+                  <Shirt className="w-3.5 h-3.5 text-stone-600" />
+                  <span>Ảnh gốc hàng này & ảnh sản phẩm tham chiếu:</span>
+                </h4>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
+                  {/* Current row original image */}
+                  <div
+                    onClick={() => {
+                      if (isGalleryPickerOpen === 'start') {
+                        onUpdateItem(item.id, {
+                          videoStartImageUrl: item.dataUrl,
+                          videoStartImageName: `Ảnh gốc: ${item.name}`,
+                        });
+                      } else {
+                        onUpdateItem(item.id, {
+                          videoEndImageUrl: item.dataUrl,
+                          videoEndImageName: `Ảnh gốc: ${item.name}`,
+                        });
+                      }
+                      setIsGalleryPickerOpen(null);
+                    }}
+                    className="group relative aspect-[3/4] rounded-xl overflow-hidden bg-stone-900 border-2 border-stone-200 hover:border-emerald-500 cursor-pointer shadow-2xs hover:shadow-md transition-all flex flex-col justify-end p-1"
+                  >
+                    <img
+                      src={item.dataUrl}
+                      alt={item.name}
+                      referrerPolicy="no-referrer"
+                      className="absolute inset-0 w-full h-full object-contain group-hover:scale-105 transition-transform"
+                    />
+                    <div className="relative z-10 bg-black/75 backdrop-blur-xs p-1 rounded-md text-white">
+                      <p className="text-[9px] font-bold truncate">Ảnh gốc: #{index + 1}</p>
+                    </div>
+                  </div>
+
+                  {/* Outfit References */}
+                  {appliedProductReferences.map((ref, rIdx) => (
+                    <div
+                      key={`ref-${rIdx}-${ref.id}`}
+                      onClick={() => {
+                        const targetUrl = ref.previewUrl || ref.dataUrl || '';
+                        if (isGalleryPickerOpen === 'start') {
+                          onUpdateItem(item.id, {
+                            videoStartImageUrl: targetUrl,
+                            videoStartImageName: `Sản phẩm ref${rIdx + 2}: ${ref.name}`,
+                          });
+                        } else {
+                          onUpdateItem(item.id, {
+                            videoEndImageUrl: targetUrl,
+                            videoEndImageName: `Sản phẩm ref${rIdx + 2}: ${ref.name}`,
+                          });
+                        }
+                        setIsGalleryPickerOpen(null);
+                      }}
+                      className="group relative aspect-[3/4] rounded-xl overflow-hidden bg-stone-900 border-2 border-stone-200 hover:border-violet-500 cursor-pointer shadow-2xs hover:shadow-md transition-all flex flex-col justify-end p-1"
+                    >
+                      <img
+                        src={ref.previewUrl || ref.dataUrl}
+                        alt={ref.name}
+                        referrerPolicy="no-referrer"
+                        className="absolute inset-0 w-full h-full object-contain group-hover:scale-105 transition-transform"
+                      />
+                      <div className="relative z-10 bg-black/75 backdrop-blur-xs p-1 rounded-md text-white">
+                        <p className="text-[9px] font-bold truncate">Ref {rIdx + 2}: {ref.name}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="pt-3 border-t border-stone-200 flex items-center justify-between">
+              <span className="text-xs text-stone-500">
+                Mẹo: Bạn cũng có thể kéo trực tiếp ảnh từ hàng phía trên hoặc từ máy tính thả vào ô.
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsGalleryPickerOpen(null)}
+                className="px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-bold hover:bg-stone-800 transition-colors cursor-pointer"
+              >
+                Đóng
+              </button>
             </div>
           </div>
         </div>
