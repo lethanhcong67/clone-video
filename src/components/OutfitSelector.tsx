@@ -9,13 +9,17 @@ import {
   CheckCheck,
   Package,
   Copy,
+  FileText,
 } from 'lucide-react';
 import { OutfitReference, ApiConfig } from '../types';
 import { fileToDataUrl } from '../utils/imageUtils';
+import { updateOutfitPromptWithProductDetails } from '../utils/promptHelper';
 
 interface OutfitSelectorProps {
   productName?: string;
   onChangeProductName?: (val: string) => void;
+  productDescription?: string;
+  onChangeProductDescription?: (val: string) => void;
   outfitPrompt: string;
   onChangePrompt: (val: string) => void;
   uploadedOutfits: OutfitReference[];
@@ -32,6 +36,8 @@ interface OutfitSelectorProps {
 export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
   productName = '',
   onChangeProductName,
+  productDescription = '',
+  onChangeProductDescription,
   outfitPrompt,
   onChangePrompt,
   uploadedOutfits,
@@ -52,21 +58,38 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
     null;
 
   // Helper to generate default standard prompt
-  const getStandardPrompt = (name: string) => {
-    const trimmed = name.trim();
-    return trimmed
-      ? `thay sản phẩm "${trimmed}" ở hình image2 sang hình image1 (xóa bỏ sản phẩm cũ ở image1 và thay thế chính xác bằng sản phẩm mới từ image2)`
-      : 'thay sản phẩm ở hình image2 sang hình image1 (xóa bỏ sản phẩm cũ ở image1 và thay thế chính xác bằng sản phẩm mới từ image2)';
+  const getStandardPrompt = (name: string, desc?: string) => {
+    const trimmedName = name.trim();
+    const trimmedDesc = (desc || '').trim();
+    let target = 'sản phẩm';
+    if (trimmedName && trimmedDesc) {
+      target = `${trimmedName} (${trimmedDesc})`;
+    } else if (trimmedName) {
+      target = trimmedName;
+    } else if (trimmedDesc) {
+      target = `sản phẩm (${trimmedDesc})`;
+    }
+    return `thay ${target} ở hình image2 sang hình image1`;
   };
 
   const handleProductNameChange = (newName: string) => {
     if (onChangeProductName) {
       onChangeProductName(newName);
     }
+    const updatedPrompt = updateOutfitPromptWithProductDetails(outfitPrompt, newName, productDescription);
+    onChangePrompt(updatedPrompt);
+  };
+
+  const handleProductDescriptionChange = (newDesc: string) => {
+    if (onChangeProductDescription) {
+      onChangeProductDescription(newDesc);
+    }
+    const updatedPrompt = updateOutfitPromptWithProductDetails(outfitPrompt, productName, newDesc);
+    onChangePrompt(updatedPrompt);
   };
 
   const handleApplyStandardPrompt = () => {
-    onChangePrompt(getStandardPrompt(productName));
+    onChangePrompt(getStandardPrompt(productName, productDescription));
   };
 
   const processFiles = async (fileList: FileList | File[]) => {
@@ -276,7 +299,7 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
             )}
           </div>
 
-          {/* Right: Product Name & Prompt Textarea (cols 7) */}
+          {/* Right: Product Name, Product Details & Prompt Textarea (cols 7) */}
           <div className="sm:col-span-7 space-y-2">
             {/* Field 1: Tên sản phẩm */}
             <div>
@@ -291,12 +314,30 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
                 type="text"
                 value={productName}
                 onChange={(e) => handleProductNameChange(e.target.value)}
-                placeholder="VD: tạp dề thêu hoa Mexico, áo sơ mi lụa trắng, đồng hồ dây da..."
+                placeholder="VD: cốc, tạp dề thêu hoa Mexico, áo sơ mi lụa trắng, đồng hồ dây da..."
                 className="w-full rounded-lg border border-stone-300 px-2.5 py-1.5 text-xs text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-hidden transition-all bg-white"
               />
             </div>
 
-            {/* Field 2: Yêu cầu thay thế (Prompt) */}
+            {/* Field 2: Thông tin sản phẩm */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="product-description-input" className="text-xs font-bold text-stone-800 flex items-center gap-1">
+                  <FileText className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Thông tin chi tiết sản phẩm:</span>
+                </label>
+              </div>
+              <input
+                id="product-description-input"
+                type="text"
+                value={productDescription}
+                onChange={(e) => handleProductDescriptionChange(e.target.value)}
+                placeholder="VD: chất liệu gốm sứ trắng bóng, in hình mèo cute, quai cầm màu cam..."
+                className="w-full rounded-lg border border-stone-300 px-2.5 py-1.5 text-xs text-stone-900 placeholder:text-stone-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-hidden transition-all bg-white"
+              />
+            </div>
+
+            {/* Field 3: Yêu cầu thay thế (Prompt) */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label htmlFor="outfit-prompt-input" className="text-xs font-semibold text-stone-700 flex items-center gap-1">
@@ -329,7 +370,7 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
                 rows={2}
                 value={outfitPrompt}
                 onChange={(e) => onChangePrompt(e.target.value)}
-                placeholder={`Thay thế chính xác ${productName.trim() ? `"${productName.trim()}"` : 'sản phẩm'} theo ảnh tham chiếu image2 vào hình gốc image1 (xóa bỏ sản phẩm cũ ở image1)`}
+                placeholder={`thay ${productName.trim() ? productName.trim() : 'sản phẩm'} ở hình image2 sang hình image1`}
                 className="w-full rounded-lg border border-stone-300 p-2 text-xs text-stone-900 placeholder:text-stone-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-hidden transition-all resize-none bg-stone-50/50 hover:bg-white focus:bg-white"
               />
             </div>

@@ -1661,6 +1661,9 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
           promptParts.push('giữ nguyên người mẫu và tư thế (nếu có)');
         }
 
+        // Tỉ lệ khung hình ở cuối prompt (mặc định 9:16)
+        promptParts.push(`tỉ lệ khung hình ${aspectRatio || '9:16'}`);
+
         const promptInstructions = promptParts.join(', ');
         const effectiveGptPrompt = activeDirectPrompt || promptInstructions;
 
@@ -2089,6 +2092,9 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
       } else if (!isCharChange) {
         promptParts.push('giữ nguyên người mẫu và tư thế (nếu có)');
       }
+
+      // Tỉ lệ khung hình ở cuối prompt (mặc định 9:16)
+      promptParts.push(`tỉ lệ khung hình ${aspectRatio || '9:16'}`);
 
       const promptInstructions = promptParts.join(', ');
 

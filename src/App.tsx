@@ -203,6 +203,7 @@ export default function App() {
     characterPrompt: '',
     enableOutfit: true,
     productName: '',
+    productDescription: '',
     outfitPrompt: 'thay sản phẩm ở hình image2 sang hình image1',
     removeSubtitles: true,
     preservePose: true,
@@ -310,6 +311,8 @@ export default function App() {
       enableOutfit: true,
       enableBackground: Boolean(settings.backgroundPrompt?.trim()),
       characterPrompt: settings.characterPrompt,
+      productName: settings.productName,
+      productDescription: settings.productDescription,
       outfitPrompt: settings.outfitPrompt,
       backgroundPrompt: settings.backgroundPrompt || '',
       productReferences: uploadedOutfits.length > 0 ? [...uploadedOutfits] : undefined,
@@ -350,6 +353,7 @@ export default function App() {
           enableBackground: item.appliedConfig?.enableBackground ?? Boolean(settings.backgroundPrompt?.trim()),
           characterPrompt: settings.characterPrompt,
           productName: settings.productName,
+          productDescription: settings.productDescription,
           outfitPrompt: settings.outfitPrompt,
           backgroundPrompt: item.appliedConfig?.backgroundPrompt !== undefined ? item.appliedConfig.backgroundPrompt : (settings.backgroundPrompt || ''),
           productReferences: uploadedOutfits.length > 0 ? [...uploadedOutfits] : undefined,
@@ -361,10 +365,14 @@ export default function App() {
       }))
     );
 
+    const productDisplayName = settings.productName
+      ? (settings.productDescription ? `sản phẩm "${settings.productName} (${settings.productDescription})"` : `sản phẩm "${settings.productName}"`)
+      : (settings.productDescription ? `sản phẩm (${settings.productDescription})` : 'sản phẩm');
+
     showToast(
       isCharActive
-        ? `Đã đồng bộ nhân vật & ${uploadedOutfits.length > 1 ? `${uploadedOutfits.length} sản phẩm tham chiếu` : (settings.productName ? `sản phẩm "${settings.productName}"` : 'sản phẩm')} cho tất cả ${items.length} ảnh!`
-        : `Đã đồng bộ thay thế ${uploadedOutfits.length > 1 ? `${uploadedOutfits.length} sản phẩm tham chiếu [ref2, ref3...]` : (settings.productName ? `sản phẩm "${settings.productName}"` : 'sản phẩm')} (giữ nguyên người & ảnh gốc) cho tất cả ${items.length} ảnh!`,
+        ? `Đã đồng bộ nhân vật & ${uploadedOutfits.length > 1 ? `${uploadedOutfits.length} sản phẩm tham chiếu` : productDisplayName} cho tất cả ${items.length} ảnh!`
+        : `Đã đồng bộ thay thế ${uploadedOutfits.length > 1 ? `${uploadedOutfits.length} sản phẩm tham chiếu [ref2, ref3...]` : productDisplayName} (giữ nguyên người & ảnh gốc) cho tất cả ${items.length} ảnh!`,
       'success'
     );
   };
@@ -937,6 +945,13 @@ export default function App() {
             setSettings((prev) => ({
               ...prev,
               productName: val,
+            }))
+          }
+          productDescription={settings.productDescription || ''}
+          onChangeProductDescription={(val) =>
+            setSettings((prev) => ({
+              ...prev,
+              productDescription: val,
             }))
           }
           outfitPrompt={settings.outfitPrompt}

@@ -25,7 +25,8 @@ export interface AppliedReplacementConfig {
   enableOutfit: boolean; // Whether to replace outfit/product for this image
   enableBackground?: boolean; // Whether to change background for this image
   characterPrompt: string;
-  productName?: string; // Tên sản phẩm thay thế (ví dụ: tạp dề, áo sơ mi, đồng hồ...)
+  productName?: string; // Tên sản phẩm thay thế (ví dụ: cốc, tạp dề, áo sơ mi...)
+  productDescription?: string; // Thông tin chi tiết sản phẩm (ví dụ: sứ trắng, quai cam, in hình mèo cute...)
   outfitPrompt: string;
   backgroundPrompt?: string; // Prompt for new background/scenery
   // Multiple product reference images: ref2, ref3, ...
@@ -69,6 +70,7 @@ export interface BatchImageItem {
   customSettings?: {
     characterPrompt?: string;
     productName?: string;
+    productDescription?: string;
     outfitPrompt?: string;
     removeSubtitles?: boolean;
     preserveBackground?: boolean;
@@ -125,7 +127,8 @@ export interface BatchSettings {
   characterPrompt: string;
   selectedCharacterPresetId?: string;
   enableOutfit: boolean;
-  productName?: string; // Tên sản phẩm thay thế (ví dụ: tạp dề, áo sơ mi...)
+  productName?: string; // Tên sản phẩm thay thế (ví dụ: cốc, tạp dề, áo sơ mi...)
+  productDescription?: string; // Thông tin chi tiết sản phẩm (ví dụ: sứ trắng, quai cam, in hình mèo cute...)
   outfitPrompt: string;
   selectedOutfitPresetId?: string;
   selectedOutfitRefId?: string;
