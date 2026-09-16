@@ -44,6 +44,7 @@ import { generateMotionVideoFromImage } from '../utils/videoGenerator';
 import { CAMERA_MOVEMENT_PRESETS } from '../data/presets';
 import { BatchPipelineRowItem } from './BatchPipelineRowItem';
 import { CompletedImagesStrip } from './CompletedImagesStrip';
+import { uploadMediaToSupabase, saveGenerationRecord } from '../utils/supabaseClient';
 
 interface BatchPipelineRowsProps {
   items: BatchImageItem[];
@@ -357,6 +358,35 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
               videoStatus: 'completed',
               videoProgress: 100,
             });
+
+            // Auto save Kling video prompt to Supabase Cloud (do not store video files)
+            (async () => {
+              try {
+                await saveGenerationRecord({
+                  task_type: 'image_to_video',
+                  status: 'completed',
+                  prompt: promptText || item.videoPrompt || 'Cinematic Kling AI video generation',
+                  negative_prompt: negativePrompt || undefined,
+                  camera_prompt: item.selectedCameraMotion || undefined,
+                  output_media_url: null, // Không lưu trữ video
+                  thumbnail_url: item.resultImageUrl || item.dataUrl,
+                  model_name: model || 'kling-v2-6',
+                  parameters: {
+                    duration,
+                    mode,
+                    aspectRatio,
+                    cfgScale,
+                    multiShot,
+                  },
+                  input_media: {
+                    item_name: item.name,
+                  },
+                });
+                console.log('[Supabase Cloud] Đã tự động lưu Prompt tạo Video vào Supabase Cloud!');
+              } catch (vidErr) {
+                console.warn('[Supabase Cloud Video Auto-Save Warning]:', vidErr);
+              }
+            })();
           } else if (statusData.status === 'failed') {
             clearInterval(pollTimer);
             onUpdateItem(item.id, {
@@ -415,6 +445,31 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
         videoStatus: 'completed',
         videoProgress: 100,
       });
+
+      // Auto-save Instant motion prompt to Supabase (do not store video files)
+      (async () => {
+        try {
+          await saveGenerationRecord({
+            task_type: 'image_to_video',
+            status: 'completed',
+            prompt: item.videoPrompt || 'Cinematic subtle motion zoom/pan video',
+            camera_prompt: 'cinematic_drift_and_zoom',
+            output_media_url: null, // Không lưu trữ video
+            thumbnail_url: item.resultImageUrl || item.dataUrl,
+            model_name: 'Instant Motion Canvas',
+            parameters: {
+              duration: 3.5,
+              fps: 30,
+            },
+            input_media: {
+              item_name: item.name,
+            },
+          });
+          console.log('[Supabase Cloud] Đã tự động lưu Prompt tạo Video vào Supabase Cloud!');
+        } catch (motionErr) {
+          console.warn('[Supabase Cloud Motion Prompt Save Warning]:', motionErr);
+        }
+      })();
     } catch (err: any) {
       console.error('Lỗi khi tạo video tức thì cho hàng:', err);
       onUpdateItem(item.id, {
@@ -422,6 +477,7 @@ export const BatchPipelineRows: React.FC<BatchPipelineRowsProps> = ({
         videoError: err.message || 'Không thể tạo video chuyển động tức thì từ ảnh này',
       });
     }
+
   };
 
   // Alias for backward compatibility

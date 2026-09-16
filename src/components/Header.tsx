@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Wand2, HelpCircle, RotateCcw } from 'lucide-react';
+import { Sparkles, Wand2, HelpCircle, RotateCcw, Database } from 'lucide-react';
 import { ApiConfig } from '../types';
 
 interface HeaderProps {
@@ -12,6 +12,7 @@ interface HeaderProps {
   onOpenGuide: () => void;
   onOpenApiSettings: () => void;
   onOpenLogModal?: () => void;
+  onOpenGallery?: () => void;
   hasApiLog?: boolean;
 }
 
@@ -25,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenGuide,
   onOpenApiSettings,
   onOpenLogModal,
+  onOpenGallery,
   hasApiLog = false,
 }) => {
   const isGpt = apiConfig.activeProvider === 'gpt-image-2';
@@ -71,6 +73,20 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Controls & Indicators */}
         <div className="flex items-center flex-wrap gap-2 self-end sm:self-auto">
+          {/* Supabase History Gallery Button */}
+          {onOpenGallery && (
+            <button
+              id="open-supabase-gallery-btn"
+              type="button"
+              onClick={onOpenGallery}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all shadow-xs"
+              title="Mở Kho Lưu Trữ & Lịch Sử Tạo AI (Supabase Cloud)"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Kho Lưu Trữ Cloud</span>
+            </button>
+          )}
+
           {/* Guide button */}
           <button
             id="guide-modal-btn"
@@ -82,21 +98,20 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">Hướng dẫn</span>
           </button>
 
-          {/* Reset button */}
-          {(batchCount > 0 || completedCount > 0) && (
-            <button
-              id="reset-all-btn"
-              type="button"
-              onClick={onReset}
-              className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-rose-200/60 transition-colors"
-              title="Làm mới lại từ đầu"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Làm mới</span>
-            </button>
-          )}
+          {/* Reset button: Always available to reset back to initial blank screen */}
+          <button
+            id="reset-all-btn"
+            type="button"
+            onClick={onReset}
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-rose-200/80 transition-colors"
+            title="Làm mới lại toàn bộ giao diện về trạng thái ban đầu sạch sẽ"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Làm mới</span>
+          </button>
         </div>
       </div>
     </header>
   );
 };
+

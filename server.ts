@@ -1385,7 +1385,7 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
   app.post("/api/generate-replacement", async (req, res) => {
     try {
       const {
-        provider = "gemini", // "gemini" | "gpt-image-2"
+        provider = "gpt-image-2", // Default to OpenLux AI / GPT-Image-2
         gptImageConfig,
         originalImageBase64, // pure base64 or data URL (ref1)
         originalMimeType = "image/jpeg",
@@ -1416,6 +1416,15 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         return res.status(400).json({
           error: "Thiếu dữ liệu hình ảnh gốc (originalImageBase64 is required)",
         });
+      }
+
+      // Determine effective provider: if Gemini is requested but the key is an OpenLux sk- key or not native AIzaSy, auto-switch to OpenLux AI (gpt-image-2)
+      let effectiveProvider = provider;
+      const headerGeminiKey = req.headers["x-gemini-api-key"] as string | undefined;
+      const testGeminiKey = (apiKey && apiKey.trim()) || (headerGeminiKey && headerGeminiKey.trim()) || process.env.GEMINI_API_KEY || "";
+      if (effectiveProvider === "gemini" && !testGeminiKey.startsWith("AIzaSy")) {
+        console.log("ℹ️ [Smart Provider Router] Phát hiện khóa OpenLux (sk-...), tự động chuyển chế độ sang OpenLux AI / GPT-Image-2.");
+        effectiveProvider = "gpt-image-2";
       }
 
       // Clean base64 string if it contains data URI prefix
@@ -1487,8 +1496,8 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
       console.log("Phong cách:", stylePreset);
       console.log("=======================================================\n");
 
-      // --- BRANCH A: GPT-IMAGE-2 (OpenAI / OpenAI-Compatible) ---
-      if (provider === "gpt-image-2") {
+      // --- BRANCH A: GPT-IMAGE-2 (OpenAI / OpenLux AI) ---
+      if (effectiveProvider === "gpt-image-2") {
         const headerOpenAiKey = req.headers["x-openai-api-key"] as string | undefined;
         const effectiveGptKey =
           (gptImageConfig?.apiKey && gptImageConfig.apiKey.trim()) ||

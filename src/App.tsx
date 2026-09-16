@@ -18,10 +18,13 @@ import { ApiSettingsModal } from './components/ApiSettingsModal';
 import { ApiStatusBanner } from './components/ApiStatusBanner';
 import { ApiLogModal } from './components/ApiLogModal';
 import { VideoSceneExtractor } from './components/VideoSceneExtractor';
-import { BatchImageItem, BatchSettings, OutfitReference, ApiConfig, AppliedReplacementConfig, GptImageConfig, KlingVideoConfig, VisionAnalysisConfig } from './types';
+import { HistoryGalleryModal } from './components/HistoryGalleryModal';
+import { ProjectManagerBar } from './components/ProjectManagerBar';
+import { BatchImageItem, BatchSettings, OutfitReference, ApiConfig, AppliedReplacementConfig, GptImageConfig, KlingVideoConfig, VisionAnalysisConfig, ProjectRecord } from './types';
 import { downloadAllAsZip } from './utils/imageUtils';
 import { createSampleBatchItem, generateFallbackResultImage } from './utils/sampleGenerator';
 import { generateFullPromptText } from './utils/promptHelper';
+import { uploadMediaToSupabase, saveGenerationRecord, updateProject, fetchProjectById } from './utils/supabaseClient';
 
 const API_STORAGE_KEY = 'ai_image_api_config_v2';
 
@@ -99,8 +102,13 @@ function loadSavedApiConfig(): ApiConfig {
           ? 'https://api.openlux.ai/kling/v1/videos/image2video'
           : savedKlingBaseUrl;
 
+      let activeProvider = parsed.activeProvider || 'gpt-image-2';
+      if (activeProvider === 'gemini' && !parsed.apiKey?.startsWith('AIzaSy')) {
+        activeProvider = 'gpt-image-2';
+      }
+
       return {
-        activeProvider: parsed.activeProvider || 'gpt-image-2',
+        activeProvider,
         apiKey: parsed.apiKey || 'sk-Zaijv0dEfEBxf2nc07glM0MFT464YajjKJceAb9nQ2r9BrTY',
         model: parsed.model || 'gemini-3.1-flash-image',
         isCustomKeyActive: Boolean(parsed.isCustomKeyActive ?? true),
@@ -227,8 +235,15 @@ export default function App() {
   const [hasKlingKey, setHasKlingKey] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [latestApiLog, setLatestApiLog] = useState<any>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
+
+  // Project & Session Management State
+  const [currentProject, setCurrentProject] = useState<ProjectRecord | null>(null);
+  const [isProjectDirty, setIsProjectDirty] = useState(false);
+  const [isProjectSaving, setIsProjectSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   // Check health and API key on mount
   useEffect(() => {
@@ -247,15 +262,51 @@ export default function App() {
   // Prevent accidental page close or refresh if there are tasks or generated results
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isProcessing || items.length > 0) {
+      if (isProcessing || (isProjectDirty && items.length > 0)) {
         e.preventDefault();
-        e.returnValue = 'Bạn có dữ liệu đang làm việc chưa lưu. Bạn có chắc muốn rời khỏi trang không?';
+        e.returnValue = 'Bạn có dữ liệu trong dự án chưa lưu lên Cloud. Bạn có chắc muốn rời khỏi trang không?';
         return e.returnValue;
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isProcessing, items.length]);
+  }, [isProcessing, isProjectDirty, items.length]);
+
+  // Handle Reset: Clears entire workspace back to clean blank initial state
+  const handleReset = () => {
+    if (isProcessing) {
+      showToast('Đang trong quá trình tạo ảnh AI, không thể làm mới!', 'warning');
+      return;
+    }
+
+    const confirm = window.confirm('Bạn có chắc chắn muốn làm mới toàn bộ giao diện về trạng thái ban đầu (trắng hoàn toàn) không?');
+    if (!confirm) return;
+
+    setItems([]);
+    setSelectedItemId(null);
+    setUploadedOutfits([]);
+    setSettings({
+      enableCharacter: false,
+      characterPrompt: '',
+      enableOutfit: true,
+      productName: '',
+      productDescription: '',
+      outfitPrompt: 'thay sản phẩm ở hình image2 sang hình image1',
+      removeSubtitles: true,
+      preservePose: true,
+      preserveBackground: true,
+      backgroundPrompt: '',
+      stylePreset: 'photorealistic',
+      aspectRatio: '9:16',
+      concurrency: 5,
+      variationsPerItem: 1,
+    });
+    setCurrentProject(null);
+    setIsProjectDirty(false);
+    setLastSavedAt(null);
+    localStorage.removeItem('ai_app_active_project_id');
+    showToast('Đã làm mới toàn bộ giao diện về trạng thái ban đầu sạch sẽ!', 'info');
+  };
 
   const showToast = (message: string, type: 'info' | 'success' | 'warning' = 'info') => {
     setNotification({ message, type });
@@ -263,6 +314,104 @@ export default function App() {
       setNotification(null);
     }, 4000);
   };
+
+  const isSkipDirtyTrackingRef = useRef(true);
+
+  // Handler: Select and restore an existing project with full state
+  const handleSelectProject = (project: ProjectRecord) => {
+    isSkipDirtyTrackingRef.current = true;
+    setCurrentProject(project);
+    if (project.settings) {
+      setSettings((prev) => ({ ...prev, ...project.settings }));
+    }
+    if (project.uploaded_outfits && project.uploaded_outfits.length > 0) {
+      setUploadedOutfits(project.uploaded_outfits);
+    } else {
+      setUploadedOutfits([]);
+    }
+    if (project.items && project.items.length > 0) {
+      setItems(project.items);
+      setSelectedItemId(project.items[0].id);
+    } else {
+      setItems([]);
+      setSelectedItemId(null);
+    }
+    setIsProjectDirty(false);
+    setLastSavedAt(new Date(project.updated_at || project.created_at || Date.now()));
+  };
+
+  // Watch for workspace changes to mark dirty state for active project
+  useEffect(() => {
+    if (isSkipDirtyTrackingRef.current) {
+      isSkipDirtyTrackingRef.current = false;
+      return;
+    }
+    if (currentProject) {
+      setIsProjectDirty(true);
+    }
+  }, [items, settings, uploadedOutfits]);
+
+  // Calculate if AI generation for images or videos is currently in progress
+  const isGenerating =
+    isProcessing ||
+    activeProcessingIds.length > 0 ||
+    items.some((it) => it.status === 'processing' || it.videoStatus === 'generating');
+
+  // Handler: Save current project to Supabase (update existing project with latest state)
+  const handleSaveCurrentProject = async (): Promise<boolean> => {
+    if (isGenerating) {
+      showToast('Đang có tiến trình tạo ảnh hoặc video AI đang chạy. Không thể lưu dự án lúc này, vui lòng đợi hoàn tất!', 'warning');
+      return false;
+    }
+
+    if (!currentProject?.id) {
+      showToast('Chưa chọn dự án nào. Hãy bấm "+ Dự Án Mới" để lưu.', 'warning');
+      return false;
+    }
+
+    setIsProjectSaving(true);
+    try {
+      const updated = await updateProject(currentProject.id, {
+        settings,
+        uploaded_outfits: uploadedOutfits,
+        items,
+      });
+
+      if (updated) {
+        setCurrentProject(updated);
+        setIsProjectDirty(false);
+        setLastSavedAt(new Date());
+        showToast(`Đã cập nhật các thay đổi mới nhất vào dự án "${updated.name}" trên Supabase Cloud!`, 'success');
+        return true;
+      } else {
+        showToast('Không thể cập nhật dự án lên Supabase.', 'warning');
+        return false;
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Lỗi khi cập nhật dự án.', 'warning');
+      return false;
+    } finally {
+      setIsProjectSaving(false);
+    }
+  };
+
+  // Global Ctrl+S shortcut to quickly save/update project
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (isGenerating) {
+          showToast('Đang trong quá trình tạo ảnh/video AI dở, vui lòng đợi hoàn tất!', 'warning');
+          return;
+        }
+        if (currentProject?.id) {
+          handleSaveCurrentProject();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentProject, isGenerating, settings, uploadedOutfits, items]);
 
   // Quick load 3 sample images with subtitles
   const handleLoadSamples = () => {
@@ -392,28 +541,6 @@ export default function App() {
     setSelectedItemId(null);
   };
 
-  // Reset entire workflow
-  const handleReset = () => {
-    setItems([]);
-    setSelectedItemId(null);
-    setUploadedOutfits([]);
-    setSettings({
-      characterPrompt: '',
-      productName: '',
-      outfitPrompt: 'thay sản phẩm ở hình image2 sang hình image1',
-      removeSubtitles: true,
-      preservePose: true,
-      preserveBackground: true,
-      stylePreset: 'photorealistic',
-      aspectRatio: '9:16',
-      concurrency: 5,
-      variationsPerItem: 1,
-      enableCharacter: false,
-      enableOutfit: true,
-    });
-    showToast('Đã làm mới lại toàn bộ ứng dụng.', 'info');
-  };
-
   // Process a single image through server or local fallback
   const processSingleImage = async (item: BatchImageItem, variationIndex = 0): Promise<string> => {
     // Respect per-item appliedConfig first, then fallback to global settings
@@ -469,19 +596,19 @@ export default function App() {
       refIndex: idx + 2,
     }));
 
-    // Determine active provider and credentials
+    // Determine active provider and credentials (default: OpenLux AI / gpt-image-2)
     let providerToUse = apiConfig.activeProvider || 'gpt-image-2';
     const rawGeminiKey = apiConfig.apiKey ? apiConfig.apiKey.trim() : '';
     const rawGptKey = apiConfig.gptImage?.apiKey ? apiConfig.gptImage.apiKey.trim() : '';
 
-    // Smart auto-detection of API key
-    if (providerToUse === 'gemini' && rawGeminiKey.startsWith('sk-') && !rawGptKey) {
+    // Smart auto-detection: If using Gemini but key is sk- (OpenLux AI) or not native Google AIzaSy, ALWAYS use OpenLux AI (gpt-image-2)
+    if (providerToUse === 'gemini' && !rawGeminiKey.startsWith('AIzaSy')) {
       providerToUse = 'gpt-image-2';
     } else if (providerToUse === 'gpt-image-2' && rawGptKey.startsWith('AIzaSy') && !rawGeminiKey) {
       providerToUse = 'gemini';
     }
 
-    const effectiveApiKey = rawGptKey || rawGeminiKey;
+    const effectiveApiKey = (providerToUse === 'gpt-image-2' ? rawGptKey : rawGeminiKey) || rawGptKey || rawGeminiKey;
 
     // Resolve the exact, complete prompt for this specific row item (matches what is shown in the Prompt Modal)
     const rowFullPrompt = (item.customPrompt || item.appliedConfig?.customPrompt)?.trim()
@@ -626,6 +753,37 @@ export default function App() {
           if (attemptIdx > 0) {
             showToast(`Đã tự động chuyển đổi và tạo ảnh thành công qua ${currentAttempt.name}!`, 'success');
           }
+
+          // Auto-save generated image & prompt to Supabase Cloud in background
+          (async () => {
+            try {
+              const fileName = `img_${item.name ? item.name.replace(/[^a-zA-Z0-9._-]/g, '_') : Date.now()}.png`;
+              const publicUrl = await uploadMediaToSupabase(data.imageUrl, fileName, 'outputs');
+              await saveGenerationRecord({
+                task_type: 'image_swap',
+                status: 'completed',
+                prompt: rowFullPrompt,
+                output_media_url: publicUrl || data.imageUrl,
+                thumbnail_url: publicUrl || data.imageUrl,
+                model_name: providerToUse === 'gpt-image-2' ? (apiConfig.gptImage?.model || 'gpt-image-2') : (apiConfig.model || 'gemini-3.1-flash-image'),
+                parameters: {
+                  aspectRatio: settings.aspectRatio,
+                  stylePreset: settings.stylePreset,
+                  provider: providerToUse,
+                  enableCharacter: isCharacterEnabled,
+                  enableOutfit: isOutfitEnabled,
+                },
+                input_media: {
+                  item_name: item.name,
+                  product_name: effectiveProductName,
+                },
+              });
+              console.log('[Supabase Cloud] Đã tự động lưu ảnh và Prompt vào Supabase Cloud!');
+            } catch (supaErr) {
+              console.warn('[Supabase Cloud Auto-Save Warning]:', supaErr);
+            }
+          })();
+
           return data.imageUrl;
         } else {
           lastErrorDetail = data.error || (data.needsApiKey ? 'Chưa cấu hình API Key hoặc Khóa API không hợp lệ.' : 'Máy chủ AI không thể tạo ảnh.');
@@ -919,11 +1077,27 @@ export default function App() {
         onOpenGuide={() => setIsGuideOpen(true)}
         onOpenApiSettings={() => setIsApiModalOpen(true)}
         onOpenLogModal={() => setIsLogModalOpen(true)}
+        onOpenGallery={() => setIsGalleryOpen(true)}
         hasApiLog={Boolean(latestApiLog)}
       />
 
       {/* Main Container */}
       <main className="max-w-7xl w-full mx-auto px-4 lg:px-8 pt-6 space-y-6 flex-1">
+        {/* Project & Session Manager Bar (Supabase Cloud) */}
+        <ProjectManagerBar
+          currentProject={currentProject}
+          onSelectProject={handleSelectProject}
+          onSaveCurrentProject={handleSaveCurrentProject}
+          isDirty={isProjectDirty}
+          isSaving={isProjectSaving}
+          isGenerating={isGenerating}
+          lastSavedAt={lastSavedAt}
+          currentSettings={settings}
+          currentUploadedOutfits={uploadedOutfits}
+          currentItems={items}
+          showToast={showToast}
+        />
+
         {/* API & Key Status Banner */}
         <ApiStatusBanner
           config={apiConfig}
@@ -1051,6 +1225,31 @@ export default function App() {
         onClose={() => setIsLogModalOpen(false)}
         logData={latestApiLog}
       />
+
+      {/* Supabase History Gallery Modal */}
+      <HistoryGalleryModal
+        isOpen={isGalleryOpen}
+        onClose={() => setIsGalleryOpen(false)}
+        onApplyPrompt={(promptText, type) => {
+          if (type === 'video') {
+            setItems((prev) =>
+              prev.map((it) => ({
+                ...it,
+                videoPrompt: promptText,
+              }))
+            );
+            showToast('Đã áp dụng prompt video cho danh sách!', 'success');
+          } else {
+            setSettings((prev) => ({
+              ...prev,
+              outfitPrompt: promptText,
+            }));
+            showToast('Đã áp dụng prompt vào mục thay thế sản phẩm / trang phục!', 'success');
+          }
+        }}
+        showToast={showToast}
+      />
     </div>
   );
 }
+

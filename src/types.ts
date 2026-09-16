@@ -210,4 +210,16 @@ export interface ImageModelOption {
   isRecommended?: boolean;
 }
 
+export interface ProjectRecord {
+  id?: string;
+  name: string;
+  author_name: string;
+  description?: string;
+  settings?: BatchSettings;
+  uploaded_outfits?: OutfitReference[];
+  items?: BatchImageItem[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 
