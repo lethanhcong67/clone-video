@@ -412,7 +412,7 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
             title={isGenerating ? 'Vui lòng đợi tác vụ tạo ảnh/video hoàn thành trước khi tạo dự án mới' : 'Khởi tạo một dự án mới'}
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>+ Dự Án Mới</span>
+            <span>Dự Án Mới</span>
           </button>
         </div>
       </div>

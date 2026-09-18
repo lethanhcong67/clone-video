@@ -427,7 +427,7 @@ export default function App() {
     }
 
     if (!currentProject?.id) {
-      showToast('Chưa chọn dự án nào. Hãy bấm "+ Dự Án Mới" để lưu.', 'warning');
+      showToast('Chưa chọn dự án nào. Hãy bấm "Dự Án Mới" để lưu.', 'warning');
       return false;
     }
 
