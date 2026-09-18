@@ -4,11 +4,26 @@ import dotenv from "dotenv";
 import crypto from "crypto";
 import sharp from "sharp";
 import { GoogleGenAI, Modality } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
 import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
 const PORT = 3000;
+
+// Supabase Admin Client using Service Role Key to bypass Storage RLS restrictions
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://uncjoofippvcytechczr.supabase.co";
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  "";
+const SUPABASE_BUCKET_NAME = "media_assets";
+
+const supabaseAdmin = SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false },
+    })
+  : null;
 
 // Helper to normalize Kling AI base endpoint
 function normalizeKlingBaseUrl(inputUrl?: string): string {
@@ -134,9 +149,77 @@ async function startServer() {
       hasApiKey: hasKey,
       hasOpenAiKey: hasOpenAiKey,
       hasKlingKey: hasKlingKey,
+      hasSupabaseAdmin: !!supabaseAdmin,
       defaultModel: "gemini-3.1-flash-image",
       gptImageModel: "gpt-image-2",
     });
+  });
+
+  // Supabase Storage Proxy upload using Service Role Key (bypasses Storage RLS restrictions)
+  app.post("/api/storage/upload", async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: "Supabase Service Role Key chưa được cấu hình trên server" });
+      }
+
+      const { dataUrl, filename = "image.png", folder = "outputs" } = req.body;
+      if (!dataUrl) {
+        return res.status(400).json({ error: "Thiếu dữ liệu dataUrl" });
+      }
+
+      let buffer: Buffer;
+      let contentType = "image/png";
+
+      if (typeof dataUrl === "string" && dataUrl.startsWith("data:")) {
+        const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          contentType = matches[1] || "image/png";
+          buffer = Buffer.from(matches[2], "base64");
+        } else {
+          const parts = dataUrl.split(",");
+          buffer = Buffer.from(parts[1] || parts[0], "base64");
+        }
+      } else if (typeof dataUrl === "string" && (dataUrl.startsWith("http://") || dataUrl.startsWith("https://"))) {
+        const response = await fetch(dataUrl);
+        const arrayBuf = await response.arrayBuffer();
+        buffer = Buffer.from(arrayBuf);
+        contentType = response.headers.get("content-type") || "image/png";
+      } else if (typeof dataUrl === "string") {
+        buffer = Buffer.from(dataUrl, "base64");
+      } else {
+        return res.status(400).json({ error: "Dữ liệu dataUrl không đúng định dạng" });
+      }
+
+      const timestamp = Date.now();
+      const cleanName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${folder}/${timestamp}_${cleanName}`;
+
+      const { data, error } = await supabaseAdmin.storage
+        .from(SUPABASE_BUCKET_NAME)
+        .upload(filePath, buffer, {
+          contentType,
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (error) {
+        console.error("[Supabase Storage Proxy] Upload failed:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      const { data: publicUrlData } = supabaseAdmin.storage
+        .from(SUPABASE_BUCKET_NAME)
+        .getPublicUrl(filePath);
+
+      return res.json({
+        success: true,
+        publicUrl: publicUrlData.publicUrl,
+        filePath,
+      });
+    } catch (err: any) {
+      console.error("[Supabase Storage Proxy] Exception:", err);
+      return res.status(500).json({ error: err?.message || "Lỗi server khi upload storage" });
+    }
   });
 
   // Validate API key endpoint for Gemini

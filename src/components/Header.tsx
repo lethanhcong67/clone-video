@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Wand2, HelpCircle, RotateCcw, Database } from 'lucide-react';
+import { Sparkles, Wand2, HelpCircle, RotateCcw } from 'lucide-react';
 import { ApiConfig } from '../types';
 
 interface HeaderProps {
@@ -73,20 +73,6 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Controls & Indicators */}
         <div className="flex items-center flex-wrap gap-2 self-end sm:self-auto">
-          {/* Supabase History Gallery Button */}
-          {onOpenGallery && (
-            <button
-              id="open-supabase-gallery-btn"
-              type="button"
-              onClick={onOpenGallery}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all shadow-xs"
-              title="Mở Kho Lưu Trữ & Lịch Sử Tạo AI (Supabase Cloud)"
-            >
-              <Database className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Kho Lưu Trữ Cloud</span>
-            </button>
-          )}
-
           {/* Guide button */}
           <button
             id="guide-modal-btn"

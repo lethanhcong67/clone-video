@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Sparkles,
@@ -244,6 +244,7 @@ export default function App() {
   const [isProjectDirty, setIsProjectDirty] = useState(false);
   const [isProjectSaving, setIsProjectSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [extractorResetKey, setExtractorResetKey] = useState(0);
 
   // Check health and API key on mount
   useEffect(() => {
@@ -285,6 +286,7 @@ export default function App() {
     setItems([]);
     setSelectedItemId(null);
     setUploadedOutfits([]);
+    setExtractorResetKey((prev) => prev + 1);
     setSettings({
       enableCharacter: false,
       characterPrompt: '',
@@ -320,6 +322,7 @@ export default function App() {
   // Handler: Select and restore an existing project with full state
   const handleSelectProject = (project: ProjectRecord) => {
     isSkipDirtyTrackingRef.current = true;
+    setExtractorResetKey((prev) => prev + 1);
     setCurrentProject(project);
     if (project.settings) {
       setSettings((prev) => ({ ...prev, ...project.settings }));
@@ -350,6 +353,65 @@ export default function App() {
       setIsProjectDirty(true);
     }
   }, [items, settings, uploadedOutfits]);
+
+  // Keep refs in sync for non-blocking auto-save operations
+  const currentProjectRef = useRef<ProjectRecord | null>(currentProject);
+  const settingsRef = useRef(settings);
+  const uploadedOutfitsRef = useRef(uploadedOutfits);
+  const isAutoSavingRef = useRef(false);
+  const pendingAutoSaveItemsRef = useRef<BatchImageItem[] | null>(null);
+
+  useEffect(() => {
+    currentProjectRef.current = currentProject;
+  }, [currentProject]);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  useEffect(() => {
+    uploadedOutfitsRef.current = uploadedOutfits;
+  }, [uploadedOutfits]);
+
+  // Non-blocking auto-save project when any image or video finishes generating
+  const triggerAutoSaveProject = useCallback(async (latestItems: BatchImageItem[]) => {
+    const proj = currentProjectRef.current;
+    if (!proj?.id) return;
+
+    if (isAutoSavingRef.current) {
+      pendingAutoSaveItemsRef.current = latestItems;
+      return;
+    }
+
+    isAutoSavingRef.current = true;
+    setIsProjectSaving(true);
+
+    try {
+      const updated = await updateProject(proj.id, {
+        settings: settingsRef.current,
+        uploaded_outfits: uploadedOutfitsRef.current,
+        items: latestItems,
+      });
+
+      if (updated) {
+        setCurrentProject(updated);
+        setIsProjectDirty(false);
+        setLastSavedAt(new Date());
+        console.log(`[Auto-Save Project] Đã tự động cập nhật dự án "${updated.name}" lên Supabase Cloud!`);
+      }
+    } catch (err) {
+      console.warn('[Auto-Save Project Warning]:', err);
+    } finally {
+      isAutoSavingRef.current = false;
+      setIsProjectSaving(false);
+
+      if (pendingAutoSaveItemsRef.current) {
+        const nextBatch = pendingAutoSaveItemsRef.current;
+        pendingAutoSaveItemsRef.current = null;
+        triggerAutoSaveProject(nextBatch);
+      }
+    }
+  }, []);
 
   // Calculate if AI generation for images or videos is currently in progress
   const isGenerating =
@@ -869,8 +931,8 @@ export default function App() {
 
           if (isCancelledRef.current) break;
 
-          setItems((prev) =>
-            prev.map((it) =>
+          setItems((prev) => {
+            const next = prev.map((it) =>
               it.id === currentItem.id
                 ? {
                   ...it,
@@ -881,8 +943,10 @@ export default function App() {
                   activeResultIndex: 0,
                 }
                 : it
-            )
-          );
+            );
+            triggerAutoSaveProject(next);
+            return next;
+          });
         } catch (err: any) {
           if (!isCancelledRef.current) {
             setItems((prev) =>
@@ -934,11 +998,20 @@ export default function App() {
     showToast('Đã tạm dừng quá trình xử lý.', 'info');
   };
 
-  // Update a single item by id
+  // Update a single item by id (auto-syncs to project on image/video completion)
   const handleUpdateItem = (id: string, updates: Partial<BatchImageItem>) => {
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
-    );
+    setItems((prev) => {
+      const next = prev.map((item) => (item.id === id ? { ...item, ...updates } : item));
+      if (
+        updates.status === 'completed' ||
+        updates.videoStatus === 'completed' ||
+        (updates.resultImageUrl && updates.status !== 'processing') ||
+        (updates.videoUrl && updates.videoStatus !== 'generating')
+      ) {
+        triggerAutoSaveProject(next);
+      }
+      return next;
+    });
   };
 
   // Process a single item directly from its row (generates 1 image)
@@ -1108,6 +1181,7 @@ export default function App() {
 
         {/* Video Scene Extractor: Upload sample video, slice scenes by interval/cut, select frames and import */}
         <VideoSceneExtractor
+          key={`video-scene-extractor-${extractorResetKey}`}
           onImportToBatch={handleAddItems}
           showToast={showToast}
         />

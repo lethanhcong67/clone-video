@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   FolderKanban,
   FolderOpen,
@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   User,
+  Users,
   Trash2,
   X,
   Search,
@@ -17,6 +18,7 @@ import {
   AlertCircle,
   FileText,
   ChevronRight,
+  ChevronDown,
   ShieldCheck,
   Check,
 } from 'lucide-react';
@@ -75,29 +77,37 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
 
-  // Load saved author name on mount
-  useEffect(() => {
-    const savedAuthor = localStorage.getItem(LAST_AUTHOR_KEY) || 'Lê Thành Công';
-    setAuthorNameInput(savedAuthor);
-  }, []);
-
-  // Fetch projects from Supabase
-  const loadProjects = useCallback(async () => {
-    setIsLoadingProjects(true);
+  // Fetch projects from Supabase (supports silent background refresh)
+  const loadProjects = useCallback(async (silent = false) => {
+    if (!silent) setIsLoadingProjects(true);
     try {
       const data = await fetchProjects();
       setProjectsList(data);
     } catch (err: any) {
       console.warn('Lỗi tải danh sách dự án:', err);
     } finally {
-      setIsLoadingProjects(false);
+      if (!silent) setIsLoadingProjects(false);
     }
   }, []);
 
-  // Open projects list modal
+  // Pre-load projects & authors immediately on page load
+  useEffect(() => {
+    loadProjects(false);
+  }, [loadProjects]);
+
+  // Silently re-fetch and update projects list whenever project is saved / auto-saved
+  useEffect(() => {
+    if (lastSavedAt) {
+      loadProjects(true);
+    }
+  }, [lastSavedAt, loadProjects]);
+
+  // Open projects list modal instantly without blocking reload
   const handleOpenProjectsList = () => {
     setIsProjectsListModalOpen(true);
-    loadProjects();
+    setSelectedAuthorFilter(null);
+    // Silent background sync if already pre-loaded
+    loadProjects(projectsList.length > 0);
   };
 
   // Create new project handler
@@ -183,8 +193,27 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
     }
   };
 
-  // Filtered projects
+  const [selectedAuthorFilter, setSelectedAuthorFilter] = useState<string | null>(null);
+
+  // Extract author statistics and count of projects per author
+  const authorStats = useMemo(() => {
+    const map = new Map<string, number>();
+    projectsList.forEach((p) => {
+      const author = p.author_name?.trim() || 'Chưa đặt tên';
+      map.set(author, (map.get(author) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi'));
+  }, [projectsList]);
+
+  // Filtered projects by both author filter and search query
   const filteredProjects = projectsList.filter((p) => {
+    if (selectedAuthorFilter) {
+      const pAuthor = p.author_name?.trim() || 'Chưa đặt tên';
+      if (pAuthor !== selectedAuthorFilter) return false;
+    }
+
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -237,15 +266,15 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
             {/* Sync status & item counter */}
             <div className="flex items-center gap-3 text-xs text-stone-400 mt-0.5">
               <span className="flex items-center gap-1">
-                {isGenerating ? (
+                {isSaving ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                    <span className="text-emerald-400 font-medium">Đang tự động đồng bộ Cloud...</span>
+                  </>
+                ) : isGenerating ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
-                    <span className="text-indigo-300 font-medium">⚡ Đang tạo ảnh/video AI (Tạm khóa lưu dự án)</span>
-                  </>
-                ) : isSaving ? (
-                  <>
-                    <RefreshCw className="w-3 h-3 text-emerald-400 animate-spin" />
-                    <span className="text-emerald-400 font-medium">Đang lưu lên Cloud...</span>
+                    <span className="text-indigo-300 font-medium">⚡ Đang tạo AI (tự động cập nhật dự án khi xong)</span>
                   </>
                 ) : currentProject ? (
                   isDirty ? (
@@ -436,19 +465,85 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-stone-300 flex items-center justify-between">
                   <span>Tên Người Thực Hiện <span className="text-rose-400">*</span></span>
-                  <span className="text-[11px] text-stone-500 font-normal">Ghi nhận người phụ trách</span>
+                  <span className="text-[11px] text-stone-500 font-normal">Nhập mới hoặc chọn gợi ý bên dưới</span>
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 text-stone-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     required
+                    list="saved-author-names-datalist"
                     value={authorNameInput}
                     onChange={(e) => setAuthorNameInput(e.target.value)}
-                    placeholder="VD: Lê Thành Công"
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
+                    placeholder="VD: Lê Thành Công, Mai Hà..."
+                    className="w-full pl-10 pr-8 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
                   />
+                  {authorNameInput && (
+                    <button
+                      type="button"
+                      onClick={() => setAuthorNameInput('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300 p-0.5"
+                      title="Xóa để nhập tên khác"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <datalist id="saved-author-names-datalist">
+                    {authorStats.map(({ name }) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
                 </div>
+
+                {/* Loading state or Quick Suggestion Chips */}
+                {isLoadingProjects ? (
+                  <div className="pt-2 flex items-center gap-2 text-xs text-stone-400">
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                    <span className="text-[11px] text-stone-400 font-medium animate-pulse">
+                      Đang tải danh sách người thực hiện đã lưu...
+                    </span>
+                    <div className="flex items-center gap-1.5 ml-1">
+                      <div className="h-6 w-20 rounded-lg bg-stone-850 animate-pulse border border-stone-800" />
+                      <div className="h-6 w-24 rounded-lg bg-stone-850 animate-pulse border border-stone-800 hidden sm:block" />
+                    </div>
+                  </div>
+                ) : authorStats.length > 0 ? (
+                  <div className="pt-1.5 space-y-1">
+                    <div className="flex items-center gap-1 text-[11px] text-stone-400 font-medium">
+                      <Users className="w-3 h-3 text-emerald-400" />
+                      <span>Chọn nhanh tên đã lưu trước đó:</span>
+                    </div>
+                    <div className="flex items-center flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar">
+                      {authorStats.map(({ name, count }) => {
+                        const isSelected = authorNameInput.trim().toLowerCase() === name.toLowerCase();
+                        return (
+                          <button
+                            key={name}
+                            type="button"
+                            onClick={() => setAuthorNameInput(name)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 border ${
+                              isSelected
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/60 font-bold shadow-xs'
+                                : 'bg-stone-950 hover:bg-stone-850 text-stone-300 hover:text-white border-stone-800'
+                            }`}
+                          >
+                            <User className={`w-3 h-3 ${isSelected ? 'text-emerald-400' : 'text-stone-500'}`} />
+                            <span>{name}</span>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                                isSelected
+                                  ? 'bg-emerald-950/40 text-emerald-300'
+                                  : 'bg-stone-900 text-stone-500'
+                              }`}
+                            >
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {/* Description / Notes */}
@@ -556,17 +651,57 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
               </div>
             </div>
 
-            {/* Search Filter Bar */}
-            <div className="px-6 py-3 border-b border-stone-800 bg-stone-900/90 flex items-center justify-between gap-3">
-              <div className="relative flex-1 max-w-md">
-                <Search className="w-4 h-4 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Tìm theo tên dự án, người thực hiện..."
-                  className="w-full pl-9 pr-4 py-1.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-stone-200 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
-                />
+            {/* Search & Author Filter Controls */}
+            <div className="px-6 py-3 border-b border-stone-800 bg-stone-900/95 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center flex-1 gap-2 min-w-0">
+                {/* Search input */}
+                <div className="relative flex-1 min-w-[140px]">
+                  <Search className="w-4 h-4 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Tìm tên dự án, mô tả..."
+                    className="w-full pl-9 pr-8 py-2 bg-stone-950 border border-stone-800 rounded-xl text-xs text-stone-200 placeholder-stone-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300 p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Smart Author Dropdown */}
+                {authorStats.length > 0 && (
+                  <div className="relative shrink-0">
+                    <select
+                      value={selectedAuthorFilter || ''}
+                      onChange={(e) => setSelectedAuthorFilter(e.target.value || null)}
+                      className={`appearance-none pl-8 pr-8 py-2 rounded-xl text-xs font-semibold cursor-pointer border transition-all focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                        selectedAuthorFilter
+                          ? 'bg-amber-500/15 text-amber-300 border-amber-500/50 shadow-xs'
+                          : 'bg-stone-950 text-stone-300 border-stone-800 hover:border-stone-700'
+                      }`}
+                    >
+                      <option value="" className="bg-stone-900 text-stone-200">
+                        👤 Tất cả người làm ({projectsList.length})
+                      </option>
+                      {authorStats.map(({ name, count }) => (
+                        <option key={name} value={name} className="bg-stone-900 text-stone-200">
+                          {name} ({count} dự án)
+                        </option>
+                      ))}
+                    </select>
+                    <User className={`w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${
+                      selectedAuthorFilter ? 'text-amber-400' : 'text-stone-500'
+                    }`} />
+                    <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-500 pointer-events-none" />
+                  </div>
+                )}
               </div>
 
               <button
@@ -575,12 +710,95 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
                   setIsProjectsListModalOpen(false);
                   setIsNewProjectModalOpen(true);
                 }}
-                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm"
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>+ Tạo Dự Án Mới</span>
               </button>
             </div>
+
+            {/* Quick Filter Tags (Flex-wrap, clean, no scrollbar) */}
+            {isLoadingProjects ? (
+              <div className="px-6 py-2.5 bg-stone-950/70 border-b border-stone-800/80 flex items-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                <span className="text-xs text-stone-400 font-medium animate-pulse">
+                  Đang tải danh sách người thực hiện...
+                </span>
+                <div className="flex items-center gap-1.5 ml-2">
+                  <div className="h-6 w-16 rounded-lg bg-stone-900 animate-pulse border border-stone-800" />
+                  <div className="h-6 w-24 rounded-lg bg-stone-900 animate-pulse border border-stone-800" />
+                  <div className="h-6 w-20 rounded-lg bg-stone-900 animate-pulse border border-stone-800 hidden sm:block" />
+                </div>
+              </div>
+            ) : authorStats.length > 0 ? (
+              <div className="px-6 py-2 bg-stone-950/70 border-b border-stone-800/80 flex items-center flex-wrap gap-1.5">
+                <span className="text-[11px] text-stone-400 font-medium mr-1 flex items-center gap-1">
+                  <Users className="w-3 h-3 text-amber-400" />
+                  Lọc nhanh:
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedAuthorFilter(null)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    selectedAuthorFilter === null
+                      ? 'bg-amber-500 text-stone-950 shadow-sm font-bold'
+                      : 'bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-stone-200 border border-stone-800'
+                  }`}
+                >
+                  <span>Tất cả</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      selectedAuthorFilter === null
+                        ? 'bg-amber-950/40 text-stone-950'
+                        : 'bg-stone-950 text-stone-500'
+                    }`}
+                  >
+                    {projectsList.length}
+                  </span>
+                </button>
+
+                {authorStats.map(({ name, count }) => {
+                  const isSelected = selectedAuthorFilter === name;
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setSelectedAuthorFilter(isSelected ? null : name)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-amber-500 text-stone-950 shadow-sm font-bold'
+                          : 'bg-stone-900 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-800'
+                      }`}
+                    >
+                      <User className={`w-3 h-3 ${isSelected ? 'text-stone-950' : 'text-amber-400/80'}`} />
+                      <span>{name}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                          isSelected
+                            ? 'bg-amber-950/40 text-stone-950'
+                            : 'bg-stone-950 text-stone-400'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {selectedAuthorFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAuthorFilter(null)}
+                    className="ml-auto text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors px-2 py-0.5 rounded-md hover:bg-amber-950/30"
+                    title="Xóa bộ lọc người thực hiện"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Xóa lọc</span>
+                  </button>
+                )}
+              </div>
+            ) : null}
 
             {/* Content List */}
             <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">

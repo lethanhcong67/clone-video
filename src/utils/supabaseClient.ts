@@ -96,6 +96,42 @@ export async function uploadMediaToSupabase(
   filename: string,
   folder: 'inputs' | 'outputs' | 'thumbnails' = 'outputs'
 ): Promise<string | null> {
+  // 1. Try Backend Proxy first (bypasses Supabase Storage RLS policies with service_role_key)
+  try {
+    let dataUrlPayload: string | null = null;
+    if (typeof source === 'string') {
+      dataUrlPayload = source;
+    } else if (source instanceof Blob) {
+      dataUrlPayload = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(source);
+      });
+    }
+
+    if (dataUrlPayload) {
+      const proxyRes = await fetch('/api/storage/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataUrl: dataUrlPayload,
+          filename,
+          folder,
+        }),
+      });
+
+      if (proxyRes.ok) {
+        const json = await proxyRes.json();
+        if (json.success && json.publicUrl) {
+          return json.publicUrl;
+        }
+      }
+    }
+  } catch (proxyErr) {
+    console.warn('[Supabase Storage] Backend proxy upload không khả dụng, thử client upload:', proxyErr);
+  }
+
+  // 2. Client-side fallback upload
   const client = getSupabaseClient();
   if (!client) return null;
 
@@ -140,7 +176,7 @@ export async function uploadMediaToSupabase(
       });
 
     if (error) {
-      console.warn('[Supabase Storage] Lỗi upload:', error);
+      console.warn('[Supabase Storage] Lỗi client upload:', error);
       return null;
     }
 
