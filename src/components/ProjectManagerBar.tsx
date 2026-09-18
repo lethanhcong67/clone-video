@@ -713,7 +713,7 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
                 className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-sm whitespace-nowrap shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>+ Tạo Dự Án Mới</span>
+                <span>Tạo Dự Án Mới</span>
               </button>
             </div>
 
@@ -814,7 +814,7 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
                     {searchQuery ? 'Không tìm thấy dự án nào phù hợp' : 'Chưa có dự án nào được lưu'}
                   </h4>
                   <p className="text-xs text-stone-500 max-w-sm mb-4">
-                    Nhấn nút "+ Tạo Dự Án Mới" để lưu lại phiên làm việc đầu tiên của bạn.
+                    Nhấn nút "Tạo Dự Án Mới" để lưu lại phiên làm việc đầu tiên của bạn.
                   </p>
                 </div>
               ) : (
