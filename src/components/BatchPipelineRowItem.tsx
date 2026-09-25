@@ -602,110 +602,12 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
             {/* Scrollable specs container */}
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0 my-1">
               
-              {/* Sub-item A: Character */}
-              {(() => {
-                const isCharEnabled = Boolean(item.appliedConfig?.enableCharacter);
-                const isPosePreserved = item.appliedConfig?.preservePose ?? true;
-                const currentCharVal = item.appliedConfig?.characterPrompt || '';
-
-                return (
-                  <div
-                    className={`p-2.5 rounded-lg border transition-all ${
-                      isCharEnabled
-                        ? 'bg-white border-violet-300 shadow-2xs'
-                        : 'bg-emerald-50/60 border-emerald-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-1 mb-2">
-                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-stone-900">
-                        <User className={`w-3.5 h-3.5 ${isCharEnabled ? 'text-violet-600' : 'text-emerald-600'}`} />
-                        <span>Tùy chọn nhân vật:</span>
-                      </div>
-
-                      {/* Segmented Switch: Giữ người gốc vs Đổi nhân vật */}
-                      <div className="inline-flex rounded-md p-0.5 bg-stone-200/80 text-[10px] font-bold">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateItemConfig({
-                              enableCharacter: false,
-                            });
-                          }}
-                          className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
-                            !isCharEnabled
-                              ? 'bg-emerald-600 text-white shadow-xs'
-                              : 'text-stone-600 hover:text-stone-900'
-                          }`}
-                        >
-                          Giữ người gốc
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateItemConfig({
-                              enableCharacter: true,
-                              characterPrompt: currentCharVal || '',
-                            });
-                          }}
-                          className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
-                            isCharEnabled
-                              ? 'bg-violet-600 text-white shadow-xs'
-                              : 'text-stone-600 hover:text-stone-900'
-                          }`}
-                        >
-                          Đổi nhân vật
-                        </button>
-                      </div>
-                    </div>
-
-                    {isCharEnabled ? (
-                      <div className="space-y-1.5">
-                        <textarea
-                          rows={2}
-                          value={currentCharVal}
-                          onChange={(e) => {
-                            updateItemConfig({
-                              characterPrompt: e.target.value,
-                              enableCharacter: true,
-                            });
-                          }}
-                          placeholder="Nhập mô tả nhân vật mới: tuổi, giới tính, phong cách, tóc..."
-                          className="w-full text-xs font-medium text-stone-800 bg-stone-50/80 hover:bg-white focus:bg-white border border-stone-300 focus:border-violet-500 focus:ring-1 focus:ring-violet-200 rounded p-1.5 transition-all resize-none outline-none leading-relaxed placeholder:text-stone-400"
-                        />
-                        <div className="flex items-center justify-between gap-1 pt-0.5 text-[10.5px]">
-                          <button
-                            type="button"
-                            onClick={() => updateItemConfig({ preservePose: !isPosePreserved })}
-                            className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded border transition-colors cursor-pointer ${
-                              isPosePreserved
-                                ? 'text-violet-700 bg-violet-50 border-violet-200'
-                                : 'text-stone-500 bg-stone-100 border-stone-200'
-                            }`}
-                          >
-                            <Check className={`w-3 h-3 ${isPosePreserved ? 'opacity-100 text-violet-600' : 'opacity-0'}`} />
-                            <span>{isPosePreserved ? 'Giữ dáng gốc' : 'Dáng tự do'}</span>
-                          </button>
-                          <span className="text-[10px] text-stone-400">
-                            {currentCharVal.length} ký tự
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 font-medium bg-emerald-100/60 px-2 py-1.5 rounded border border-emerald-200/80">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span className="truncate">Giữ 100% người mẫu & biểu cảm của ảnh gốc</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Sub-item B: Outfit & Target Products */}
+              {/* 1. TRANG PHỤC & SẢN PHẨM (ĐƯA LÊN TRÊN CÙNG) */}
               {(() => {
                 const isOutfitActive = item.appliedConfig?.enableOutfit !== false;
                 return (
                   <div
-                    className={`p-2 rounded-lg border transition-all ${
+                    className={`p-2.5 rounded-lg border transition-all ${
                       isOutfitActive
                         ? 'bg-white border-emerald-200 shadow-2xs'
                         : 'bg-stone-100/70 border-stone-200'
@@ -871,18 +773,90 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                 );
               })()}
 
-              {/* Sub-item C: Background */}
+              {/* 2. NHÂN VẬT MỚI (LUÔN HIỆN Ô NHẬP, ĐỂ TRỐNG = GIỮ NGƯỜI GỐC) */}
               {(() => {
-                const hasBgPrompt = Boolean(
-                  (item.appliedConfig?.backgroundPrompt !== undefined
-                    ? item.appliedConfig.backgroundPrompt.trim()
-                    : (settings.backgroundPrompt?.trim() || ''))
+                const currentCharVal = item.appliedConfig?.characterPrompt || '';
+                const isCharEnabled = Boolean(currentCharVal.trim() || item.appliedConfig?.enableCharacter);
+                const isPosePreserved = item.appliedConfig?.preservePose ?? true;
+
+                return (
+                  <div
+                    className={`p-2.5 rounded-lg border transition-all ${
+                      currentCharVal.trim()
+                        ? 'bg-white border-violet-300 shadow-2xs'
+                        : 'bg-stone-50/90 border-stone-200 hover:border-violet-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-stone-900">
+                        <User className={`w-3.5 h-3.5 ${currentCharVal.trim() ? 'text-violet-600' : 'text-stone-500'}`} />
+                        <span>Nhân vật mới:</span>
+                      </div>
+
+                      {/* Pose Preservation Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => updateItemConfig({ preservePose: !isPosePreserved })}
+                        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                          isPosePreserved
+                            ? 'text-violet-700 bg-violet-50 border-violet-200 hover:bg-violet-100'
+                            : 'text-stone-500 bg-stone-100 border-stone-200 hover:bg-stone-200'
+                        }`}
+                        title="Khóa tư thế và dáng người từ ảnh gốc"
+                      >
+                        <Check className={`w-3 h-3 ${isPosePreserved ? 'opacity-100 text-violet-600' : 'opacity-0'}`} />
+                        <span>{isPosePreserved ? 'Giữ dáng gốc' : 'Dáng tự do'}</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-1">
+                      <textarea
+                        rows={2}
+                        value={currentCharVal}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateItemConfig({
+                            characterPrompt: val,
+                            enableCharacter: Boolean(val.trim()),
+                          });
+                        }}
+                        placeholder="Nhập mô tả nhân vật mới (tuổi, tóc, phong cách... - để trống nếu giữ người gốc)"
+                        className="w-full text-xs font-medium text-stone-800 bg-stone-50/70 hover:bg-white focus:bg-white border border-stone-200 focus:border-violet-500 focus:ring-1 focus:ring-violet-200 rounded p-1.5 transition-all resize-none outline-none leading-relaxed placeholder:text-stone-400 placeholder:italic"
+                      />
+                      <div className="flex items-center justify-between text-[10px] pt-0.5">
+                        {currentCharVal.trim() ? (
+                          <span className="inline-flex items-center gap-1 text-violet-700 font-semibold bg-violet-50 px-1.5 py-0.5 rounded">
+                            <Sparkles className="w-2.5 h-2.5 text-violet-600" />
+                            Đổi nhân vật theo mô tả
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 font-medium bg-emerald-50 px-1.5 py-0.5 rounded">
+                            <ShieldCheck className="w-2.5 h-2.5 text-emerald-600" />
+                            Giữ 100% người mẫu gốc
+                          </span>
+                        )}
+                        {currentCharVal && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateItemConfig({
+                                characterPrompt: '',
+                                enableCharacter: false,
+                              });
+                            }}
+                            className="text-stone-400 hover:text-rose-600 font-medium text-[9.5px] cursor-pointer"
+                          >
+                            Xóa mô tả
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 );
-                const isBgActive = Boolean(
-                  item.appliedConfig?.enableBackground !== undefined
-                    ? item.appliedConfig.enableBackground
-                    : hasBgPrompt
-                );
+              })()}
+
+              {/* 3. BỐI CẢNH MỚI (LUÔN HIỆN Ô NHẬP, ĐỂ TRỐNG = GIỮ NỀN GỐC) */}
+              {(() => {
                 const currentBgVal =
                   item.appliedConfig?.backgroundPrompt !== undefined
                     ? item.appliedConfig.backgroundPrompt
@@ -893,15 +867,15 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
 
                 return (
                   <div
-                    className={`p-2 rounded-lg border transition-all ${
-                      isBgActive
-                        ? 'bg-white border-sky-200 shadow-2xs'
-                        : 'bg-stone-100/70 border-stone-200'
+                    className={`p-2.5 rounded-lg border transition-all ${
+                      currentBgVal.trim()
+                        ? 'bg-white border-sky-300 shadow-2xs'
+                        : 'bg-stone-50/90 border-stone-200 hover:border-sky-200'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1 mb-1.5">
-                      <div className="flex items-center gap-1 text-[11px] font-bold text-stone-900">
-                        <Mountain className={`w-3.5 h-3.5 ${isBgActive ? 'text-sky-600' : 'text-stone-500'}`} />
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-stone-900">
+                        <Mountain className={`w-3.5 h-3.5 ${currentBgVal.trim() ? 'text-sky-600' : 'text-stone-500'}`} />
                         <span>Bối cảnh / Nền:</span>
                         {isCustomBg && (
                           <span className="text-[9px] font-bold text-sky-700 bg-sky-100 px-1 py-0.2 rounded leading-none">
@@ -909,129 +883,104 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
                           </span>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nextActive = !isBgActive;
-                          updateItemConfig({
-                            enableBackground: nextActive,
-                            backgroundPrompt: nextActive ? currentBgVal : '',
-                          });
-                        }}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
-                          isBgActive
-                            ? 'bg-sky-100 text-sky-800 hover:bg-sky-200 border border-sky-300/80'
-                            : 'bg-stone-200 text-stone-700 hover:bg-stone-300 border border-stone-300'
-                        }`}
-                      >
-                        {isBgActive ? (
-                          <>
-                            <Check className="w-3 h-3 text-sky-600" />
-                            <span>Thay đổi</span>
-                          </>
-                        ) : (
-                          <>
-                            <ShieldCheck className="w-3 h-3 text-stone-500" />
-                            <span>Giữ gốc</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {isBgActive ? (
-                      <div className="space-y-1">
-                        <textarea
-                          rows={2}
-                          value={currentBgVal}
-                          onChange={(e) => updateItemConfig({ enableBackground: true, backgroundPrompt: e.target.value })}
-                          placeholder="Mô tả bối cảnh mới (chỉ đổi nền, giữ nguyên vị trí sản phẩm & nhân vật)..."
-                          className="w-full text-xs font-medium text-stone-800 bg-stone-50/70 hover:bg-white focus:bg-white border border-stone-200 focus:border-sky-500 focus:ring-1 focus:ring-sky-200 rounded p-1.5 transition-all resize-none outline-none leading-relaxed placeholder:text-stone-400 placeholder:italic"
-                        />
-                        <div className="flex items-center justify-between text-[10px] text-sky-800 font-medium">
-                          <span className="flex items-center gap-1">
-                            <ShieldCheck className="w-3 h-3 text-sky-600 shrink-0" />
-                            <span>Chỉ đổi nền, giữ nguyên vị trí sản phẩm & người mẫu</span>
-                          </span>
-                          {isCustomBg && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                updateItemConfig({
-                                  backgroundPrompt: settings.backgroundPrompt || '',
-                                  enableBackground: Boolean(settings.backgroundPrompt?.trim()),
-                                });
-                              }}
-                              className="text-stone-400 hover:text-sky-600 font-medium underline flex items-center gap-0.5 cursor-pointer"
-                            >
-                              <RotateCcw className="w-2.5 h-2.5" />
-                              <span>Mẫu chung</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between text-[11px] text-stone-600 font-medium bg-stone-50 px-2 py-1 rounded border border-stone-200/60">
-                        <span className="truncate">Giữ nguyên bối cảnh gốc</span>
+                      {isCustomBg && (
                         <button
                           type="button"
-                          onClick={() => updateItemConfig({ enableBackground: true, backgroundPrompt: currentBgVal || '' })}
-                          className="text-[10.5px] font-bold text-sky-700 hover:underline flex items-center gap-0.5 ml-1 shrink-0 cursor-pointer"
+                          onClick={() => {
+                            const defaultBg = settings.backgroundPrompt || '';
+                            updateItemConfig({
+                              backgroundPrompt: defaultBg,
+                              enableBackground: Boolean(defaultBg.trim()),
+                            });
+                          }}
+                          className="text-stone-400 hover:text-sky-600 font-medium text-[10px] underline flex items-center gap-0.5 cursor-pointer"
                         >
-                          <Pencil className="w-2.5 h-2.5" />
-                          <span>Đổi nền</span>
+                          <RotateCcw className="w-2.5 h-2.5" />
+                          <span>Mẫu chung</span>
                         </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <textarea
+                        rows={2}
+                        value={currentBgVal}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateItemConfig({
+                            backgroundPrompt: val,
+                            enableBackground: Boolean(val.trim()),
+                          });
+                        }}
+                        placeholder="Nhập bối cảnh mới (bãi biển, quán cafe... - để trống nếu giữ nền gốc)"
+                        className="w-full text-xs font-medium text-stone-800 bg-stone-50/70 hover:bg-white focus:bg-white border border-stone-200 focus:border-sky-500 focus:ring-1 focus:ring-sky-200 rounded p-1.5 transition-all resize-none outline-none leading-relaxed placeholder:text-stone-400 placeholder:italic"
+                      />
+                      <div className="flex items-center justify-between text-[10px] pt-0.5">
+                        {currentBgVal.trim() ? (
+                          <span className="inline-flex items-center gap-1 text-sky-800 font-semibold bg-sky-50 px-1.5 py-0.5 rounded">
+                            <ShieldCheck className="w-2.5 h-2.5 text-sky-600" />
+                            Đổi nền, giữ nguyên người & sản phẩm
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-stone-600 font-medium bg-stone-100 px-1.5 py-0.5 rounded">
+                            <ShieldCheck className="w-2.5 h-2.5 text-stone-400" />
+                            Giữ 100% bối cảnh gốc
+                          </span>
+                        )}
+                        {currentBgVal && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateItemConfig({
+                                backgroundPrompt: '',
+                                enableBackground: false,
+                              });
+                            }}
+                            className="text-stone-400 hover:text-rose-600 font-medium text-[9.5px] cursor-pointer"
+                          >
+                            Xóa bối cảnh
+                          </button>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })()}
             </div>
 
+            {/* Bottom Footer: Quick Sync bar */}
             <div className="mt-2 flex items-center justify-between text-[11px] pt-2 border-t border-stone-200/60 shrink-0">
+              <span className="text-[10px] text-stone-400 font-medium">
+                Đồng bộ từ thiết lập chung
+              </span>
               <button
                 type="button"
-                onClick={handleOpenPromptModal}
-              className={`font-medium inline-flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors cursor-pointer ${
-                isPromptCustomized
-                  ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200'
-                  : 'text-stone-500 hover:text-indigo-600 hover:bg-stone-50'
-              }`}
-              title="Xem và chỉnh sửa toàn bộ prompt AI gửi đi cho ảnh này"
-            >
-              <FileText className={`w-3.5 h-3.5 ${isPromptCustomized ? 'text-amber-600' : 'text-indigo-500'}`} />
-              <span>{isPromptCustomized ? 'Prompt đã sửa thủ công' : 'Xem & Sửa prompt'}</span>
-              {isPromptCustomized && (
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const syncOutfits = uploadedOutfits.length > 0 ? uploadedOutfits : (uploadedOutfit ? [uploadedOutfit] : []);
-                onUpdateItem(item.id, {
-                  appliedConfig: {
-                    enableCharacter: item.appliedConfig?.enableCharacter ?? true,
-                    enableOutfit: item.appliedConfig?.enableOutfit ?? true,
-                    enableBackground: item.appliedConfig?.enableBackground ?? Boolean(settings.backgroundPrompt?.trim()),
-                    characterPrompt: settings.characterPrompt,
-                    outfitPrompt: settings.outfitPrompt,
-                    backgroundPrompt: settings.backgroundPrompt || '',
-                    productReferences: syncOutfits,
-                    outfitImageUrl: syncOutfits[0]?.dataUrl || syncOutfits[0]?.previewUrl || null,
-                    outfitImageName: syncOutfits[0]?.name || null,
-                    preservePose: settings.preservePose,
-                    appliedAt: Date.now(),
-                  },
-                });
-              }}
-              className="text-indigo-600 hover:text-indigo-800 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
-            >
-              <RefreshCw className="w-3 h-3" />
-              <span>Đồng bộ ngay</span>
-            </button>
+                onClick={() => {
+                  const syncOutfits = uploadedOutfits.length > 0 ? uploadedOutfits : (uploadedOutfit ? [uploadedOutfit] : []);
+                  onUpdateItem(item.id, {
+                    appliedConfig: {
+                      enableCharacter: Boolean(settings.characterPrompt.trim()),
+                      enableOutfit: item.appliedConfig?.enableOutfit ?? true,
+                      enableBackground: Boolean(settings.backgroundPrompt?.trim()),
+                      characterPrompt: settings.characterPrompt,
+                      outfitPrompt: settings.outfitPrompt,
+                      backgroundPrompt: settings.backgroundPrompt || '',
+                      productReferences: syncOutfits,
+                      outfitImageUrl: syncOutfits[0]?.dataUrl || syncOutfits[0]?.previewUrl || null,
+                      outfitImageName: syncOutfits[0]?.name || null,
+                      preservePose: settings.preservePose,
+                      appliedAt: Date.now(),
+                    },
+                  });
+                }}
+                className="text-indigo-600 hover:text-indigo-800 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Đồng bộ ngay</span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
         {/* COLUMN 3: New AI Result Image */}
         <div className="flex flex-col bg-stone-50/80 rounded-xl p-3 border border-stone-200/90 h-[430px] sm:h-[460px] justify-between shadow-2xs">
