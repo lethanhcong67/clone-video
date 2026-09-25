@@ -22,8 +22,10 @@ export interface GenerationRecord {
   output_base64?: string | null;
 }
 
+export const DEFAULT_GOOGLE_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwFwUu_eW_A7sGgAs2HUAm9qcBowMuER_pAIWwFS32_k6bBd9VDxOcg_lUGi75rjHv2/exec';
+
 /**
- * Lấy Web App URL từ localStorage hoặc .env
+ * Lấy Web App URL từ localStorage, .env hoặc URL mặc định cố định
  */
 export function getGoogleWebAppUrl(): string {
   if (typeof window !== 'undefined') {
@@ -31,7 +33,7 @@ export function getGoogleWebAppUrl(): string {
     if (saved && saved.trim()) return saved.trim();
   }
   const meta = import.meta as any;
-  return meta.env?.VITE_GOOGLE_WEBAPP_URL || '';
+  return meta.env?.VITE_GOOGLE_WEBAPP_URL || DEFAULT_GOOGLE_WEBAPP_URL;
 }
 
 /**

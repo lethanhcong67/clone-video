@@ -244,11 +244,13 @@ async function startServer() {
     }
   }
 
+  const DEFAULT_GOOGLE_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwFwUu_eW_A7sGgAs2HUAm9qcBowMuER_pAIWwFS32_k6bBd9VDxOcg_lUGi75rjHv2/exec";
+
   // Google Apps Script Proxy Endpoint (Avoids CORS & handles 302 redirects seamlessly)
   app.post("/api/google/proxy", async (req, res) => {
     try {
       const { targetUrl, payload } = req.body;
-      const rawUrl = targetUrl || process.env.VITE_GOOGLE_WEBAPP_URL;
+      const rawUrl = targetUrl || process.env.VITE_GOOGLE_WEBAPP_URL || DEFAULT_GOOGLE_WEBAPP_URL;
 
       if (!rawUrl || typeof rawUrl !== "string") {
         return res.status(400).json({
