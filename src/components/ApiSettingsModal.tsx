@@ -21,8 +21,17 @@ import {
   Film,
   Play,
   Code,
+  HardDrive,
+  FileSpreadsheet,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { ApiConfig, ImageModelOption, ApiProviderType, GptImageConfig, KlingVideoConfig } from '../types';
+import {
+  getGoogleWebAppUrl,
+  setGoogleWebAppUrl,
+  testGoogleConnection,
+} from '../utils/googleStorageService';
 
 export const KLING_DEFAULT_NEGATIVE_PROMPT = '';
 
@@ -151,7 +160,7 @@ interface ApiSettingsModalProps {
   systemHasKey: boolean;
   systemHasOpenAiKey?: boolean;
   systemHasKlingKey?: boolean;
-  initialTab?: 'gemini' | 'gpt-image-2' | 'kling';
+  initialTab?: 'gemini' | 'gpt-image-2' | 'kling' | 'storage';
 }
 
 export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
@@ -164,10 +173,21 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
   systemHasKlingKey = false,
   initialTab,
 }) => {
-  // Modal active tab: 'gemini' | 'gpt-image-2' | 'kling'
-  const [activeTab, setActiveTab] = useState<'gemini' | 'gpt-image-2' | 'kling'>(
+  // Modal active tab: 'gemini' | 'gpt-image-2' | 'kling' | 'storage'
+  const [activeTab, setActiveTab] = useState<'gemini' | 'gpt-image-2' | 'kling' | 'storage'>(
     initialTab || (config.activeProvider === 'gpt-image-2' ? 'gpt-image-2' : 'gemini')
   );
+
+  // Google Storage state (Google Drive + Sheets - 100% Free)
+  const [googleWebAppUrl, setGoogleWebAppUrlState] = useState<string>(getGoogleWebAppUrl());
+  const [isTestingGoogle, setIsTestingGoogle] = useState(false);
+  const [googleTestResult, setGoogleTestResult] = useState<{
+    success: boolean;
+    message: string;
+    spreadsheetName?: string;
+    folderName?: string;
+  } | null>(null);
+  const [copiedScript, setCopiedScript] = useState(false);
 
   // Active engine / provider for image generation
   const [activeProvider, setActiveProvider] = useState<ApiProviderType>(config.activeProvider || 'gemini');
@@ -379,6 +399,177 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
       }
     } catch (e) {
       console.warn('Không thể đọc clipboard:', e);
+    }
+  };
+
+  const handlePasteGoogleUrl = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setGoogleWebAppUrlState(text.trim());
+        setGoogleTestResult(null);
+      }
+    } catch (e) {
+      console.warn('Không thể đọc clipboard:', e);
+    }
+  };
+
+  const handleTestGoogleConnection = async () => {
+    const urlToTest = googleWebAppUrl.trim();
+    if (!urlToTest) {
+      setGoogleTestResult({
+        success: false,
+        message: 'Vui lòng dán Google Apps Script Web App URL trước khi kiểm tra.',
+      });
+      return;
+    }
+
+    setIsTestingGoogle(true);
+    setGoogleTestResult(null);
+
+    try {
+      const res = await testGoogleConnection(urlToTest);
+      if (res.ok) {
+        setGoogleTestResult({
+          success: true,
+          message: res.message || 'Kết nối Google Drive & Sheets thành công!',
+          spreadsheetName: res.spreadsheetName,
+          folderName: res.folderName,
+        });
+      } else {
+        setGoogleTestResult({
+          success: false,
+          message: res.message || 'Không thể kết nối đến Google Apps Script.',
+        });
+      }
+    } catch (err: any) {
+      setGoogleTestResult({
+        success: false,
+        message: err?.message || 'Lỗi khi kiểm tra kết nối Google Apps Script.',
+      });
+    } finally {
+      setIsTestingGoogle(false);
+    }
+  };
+
+  const handleCopyAppsScript = async () => {
+    try {
+      // Code template from GOOGLE_APPS_SCRIPT.js
+      const scriptCode = `// GOOGLE APPS SCRIPT: TỰ ĐỘNG LƯU PROMPT & ẢNH VÀO GOOGLE DRIVE + GOOGLE SHEETS
+const DRIVE_FOLDER_ID = ""; // Điền ID thư mục Google Drive (hoặc để trống để lưu vào My Drive)
+
+function doPost(e) {
+  try {
+    let data = {};
+    if (e && e.postData && e.postData.contents) {
+      data = JSON.parse(e.postData.contents);
+    } else if (e && e.parameter) {
+      data = e.parameter;
+    }
+    const action = data.action || "save_generation";
+    let result = {};
+    switch (action) {
+      case "ping":
+      case "test":
+        result = handlePing();
+        break;
+      case "save_generation":
+        result = handleSaveGeneration(data);
+        break;
+      case "get_history":
+        result = handleGetHistory(data);
+        break;
+      case "save_project":
+        result = handleSaveProject(data);
+        break;
+      case "get_projects":
+        result = handleGetProjects(data);
+        break;
+      default:
+        result = { success: false, error: "Action không hợp lệ: " + action };
+    }
+    return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  return ContentService.createTextOutput(JSON.stringify({ success: true, message: "AI Storage API Active!" })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function handlePing() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return { success: true, message: "Kết nối thành công!", spreadsheetName: ss.getName() };
+}
+
+function handleSaveGeneration(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("Generations");
+  if (!sheet) { sheet = ss.insertSheet("Generations"); }
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["ID", "Thời Gian", "Loại Tác Vụ", "Trạng Thái", "Prompt", "Negative Prompt / Camera", "Model AI", "Link Ảnh Gốc (Drive)", "Link Kết Quả (Drive)", "Thumbnail (Drive)", "Thông Số Chi Tiết (JSON)"]);
+    sheet.getRange(1, 1, 1, 11).setFontWeight("bold").setBackground("#4F46E5").setFontColor("#FFFFFF");
+    sheet.setFrozenRows(1);
+  }
+  const folder = DRIVE_FOLDER_ID ? DriveApp.getFolderById(DRIVE_FOLDER_ID) : DriveApp.getRootFolder();
+  const recordId = data.id || ("gen_" + Date.now());
+  const timestamp = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "yyyy-MM-dd HH:mm:ss");
+  let inputDriveUrl = data.input_media_url || "";
+  let outputDriveUrl = data.output_media_url || "";
+  if (data.input_base64 || (typeof inputDriveUrl === "string" && inputDriveUrl.startsWith("data:"))) {
+    inputDriveUrl = saveBase64ToDrive(folder, data.input_base64 || inputDriveUrl, "input_" + recordId + ".png");
+  }
+  if (data.output_base64 || (typeof outputDriveUrl === "string" && outputDriveUrl.startsWith("data:"))) {
+    outputDriveUrl = saveBase64ToDrive(folder, data.output_base64 || outputDriveUrl, "result_" + recordId + ".png");
+  }
+  sheet.appendRow([recordId, timestamp, data.task_type || "image_swap", data.status || "completed", data.prompt || "", data.negative_prompt || data.camera_prompt || "", data.model_name || "", inputDriveUrl, outputDriveUrl, outputDriveUrl, JSON.stringify(data.parameters || {})]);
+  return { success: true, message: "Đã lưu vào Drive & Sheet!", data: { id: recordId, timestamp: timestamp, input_media_url: inputDriveUrl, output_media_url: outputDriveUrl, thumbnail_url: outputDriveUrl } };
+}
+
+function handleGetHistory(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Generations");
+  if (!sheet || sheet.getLastRow() <= 1) return { success: true, items: [], total: 0 };
+  const lastRow = sheet.getLastRow();
+  const limit = data.limit ? parseInt(data.limit, 10) : 100;
+  const numRows = Math.min(limit, lastRow - 1);
+  const startRow = Math.max(2, lastRow - numRows + 1);
+  const values = sheet.getRange(startRow, 1, numRows, 11).getValues();
+  const items = [];
+  for (let i = values.length - 1; i >= 0; i--) {
+    const row = values[i];
+    let params = {};
+    try { if (row[10]) params = JSON.parse(row[10]); } catch (e) {}
+    items.push({ id: row[0], created_at: row[1], task_type: row[2], status: row[3], prompt: row[4], negative_prompt: row[5], model_name: row[6], input_media_url: row[7], output_media_url: row[8], thumbnail_url: row[9] || row[8], parameters: params });
+  }
+  return { success: true, items: items, total: lastRow - 1 };
+}
+
+function saveBase64ToDrive(folder, base64String, fileName) {
+  try {
+    let cleanBase64 = base64String;
+    let contentType = "image/png";
+    if (base64String.indexOf("data:") > -1) {
+      const parts = base64String.split(",");
+      const match = parts[0].match(/:(.*?);/);
+      if (match) contentType = match[1];
+      cleanBase64 = parts[1];
+    }
+    const decoded = Utilities.base64Decode(cleanBase64);
+    const blob = Utilities.newBlob(decoded, contentType, fileName);
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return "https://lh3.googleusercontent.com/d/" + file.getId();
+  } catch (err) {
+    return null;
+  }
+}`;
+      await navigator.clipboard.writeText(scriptCode);
+      setCopiedScript(true);
+      setTimeout(() => setCopiedScript(false), 3000);
+    } catch (e) {
+      console.warn('Lỗi sao chép mã script:', e);
     }
   };
 
@@ -640,6 +831,8 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
       lastValidatedAt: geminiTestResult?.success ? new Date().toISOString() : config.visionAnalysis?.lastValidatedAt,
     };
 
+    setGoogleWebAppUrl(googleWebAppUrl.trim());
+
     onSaveConfig({
       activeProvider,
       apiKey: geminiKey.trim(),
@@ -682,13 +875,13 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
           </div>
           <div>
             <h3 className="text-base font-bold text-stone-900 leading-tight">
-              Cấu hình API Tạo ảnh & Video AI
+              Cấu hình API & Lưu trữ Cloud
             </h3>
           </div>
         </div>
 
-        {/* Provider Switch Tabs - 3 Tabs */}
-        <div className="grid grid-cols-3 gap-1 mb-3 p-1 bg-stone-100 rounded-xl border border-stone-200 shrink-0">
+        {/* Provider Switch Tabs - 4 Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 mb-3 p-1 bg-stone-100 rounded-xl border border-stone-200 shrink-0">
           <button
             type="button"
             id="tab-gpt-image-provider"
@@ -702,7 +895,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               }`}
           >
             <Wand2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <span className="truncate">GPT-Image-2</span>
+            <span className="truncate">GPT-Image</span>
             {activeProvider === 'gpt-image-2' && (
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0"></span>
             )}
@@ -721,7 +914,7 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-            <span className="truncate">Google Gemini</span>
+            <span className="truncate">Gemini AI</span>
             {activeProvider === 'gemini' && (
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0"></span>
             )}
@@ -740,6 +933,22 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
             <span className="truncate">Kling Video</span>
             {Boolean(klingKey.trim() || systemHasKlingKey) && (
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            id="tab-google-storage-provider"
+            onClick={() => setActiveTab('storage')}
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'storage'
+              ? 'bg-white text-teal-700 shadow-xs border border-stone-200'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
+              }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+            <span className="truncate">Drive & Sheet</span>
+            {Boolean(googleWebAppUrl.trim()) && (
+              <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0"></span>
             )}
           </button>
         </div>
@@ -1605,6 +1814,141 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
               )}
             </div>
           )}
+
+          {/* TAB 4: GOOGLE DRIVE & GOOGLE SHEETS STORAGE (100% FREE) */}
+          {activeTab === 'storage' && (
+            <div className="space-y-3.5">
+              {/* Feature highlight banner */}
+              <div className="p-3 rounded-xl bg-gradient-to-r from-teal-500/10 via-emerald-500/10 to-teal-500/5 border border-teal-200">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                      <span>Lưu trữ Google Drive & Google Sheets</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        100% Miễn phí
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-stone-600 mt-0.5 leading-relaxed">
+                      Tự động lưu lại toàn bộ Prompt, Negative Prompt, Thông số Model vào <strong>Google Sheet</strong> và tải hình ảnh/video kết quả lên <strong>Google Drive</strong> của bạn.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Web App URL Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="google-webapp-url-input" className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                    <HardDrive className="w-3.5 h-3.5 text-teal-600" />
+                    <span>Google Apps Script Web App URL:</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handlePasteGoogleUrl}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-600 hover:text-teal-800 transition-colors"
+                  >
+                    <ClipboardPaste className="w-3 h-3" />
+                    <span>Dán từ clipboard</span>
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <input
+                    id="google-webapp-url-input"
+                    type="text"
+                    value={googleWebAppUrl}
+                    onChange={(e) => {
+                      setGoogleWebAppUrlState(e.target.value);
+                      setGoogleTestResult(null);
+                    }}
+                    placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                    className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-stone-300 focus:outline-hidden focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all text-stone-800 bg-stone-50/50"
+                  />
+                </div>
+                <p className="text-[10px] text-stone-500">
+                  URL triển khai Web App dạng <code className="bg-stone-100 px-1 py-0.5 rounded text-stone-700">https://script.google.com/macros/s/.../exec</code>
+                </p>
+              </div>
+
+              {/* Test & Copy Script Actions */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                <button
+                  id="test-google-btn"
+                  type="button"
+                  disabled={isTestingGoogle || !googleWebAppUrl.trim()}
+                  onClick={handleTestGoogleConnection}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-stone-100 hover:bg-stone-200 text-xs font-bold text-stone-800 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {isTestingGoogle ? (
+                    <Loader2 className="w-3.5 h-3.5 text-teal-600 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+                  )}
+                  <span>{isTestingGoogle ? 'Đang kiểm tra...' : 'Kiểm tra kết nối Drive & Sheet'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopyAppsScript}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-teal-200 bg-teal-50 hover:bg-teal-100 text-xs font-bold text-teal-700 transition-all active:scale-95 cursor-pointer"
+                >
+                  {copiedScript ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5 text-teal-600" />
+                  )}
+                  <span>{copiedScript ? 'Đã sao chép mã Apps Script!' : '📋 Sao chép mã Google Apps Script'}</span>
+                </button>
+              </div>
+
+              {/* Test Result Banner */}
+              {googleTestResult && (
+                <div
+                  id="test-google-feedback"
+                  className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${googleTestResult.success
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border border-rose-200 text-rose-800'
+                    }`}
+                >
+                  {googleTestResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="leading-tight">
+                    <p className="font-bold">{googleTestResult.success ? 'Kết nối thành công!' : 'Kiểm tra thất bại'}</p>
+                    <p className="text-[11px] mt-0.5">{googleTestResult.message}</p>
+                    {googleTestResult.spreadsheetName && (
+                      <p className="text-[10px] text-stone-600 mt-1">
+                        📊 Google Sheet: <strong>{googleTestResult.spreadsheetName}</strong>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Step-by-step instructions box */}
+              <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-2 text-[11px] text-stone-600">
+                <p className="font-bold text-stone-800 text-xs flex items-center gap-1.5">
+                  <span>⚡ Hướng dẫn cài đặt nhanh trong 2 phút:</span>
+                </p>
+                <ol className="list-decimal list-inside space-y-1 pl-1">
+                  <li>Mở <strong>Google Sheet</strong> của bạn ➜ Chọn menu <strong>Tiện ích mở rộng ➜ Apps Script</strong>.</li>
+                  <li>Bấm nút <strong>"📋 Sao chép mã Google Apps Script"</strong> ở trên ➜ Dán vào Apps Script ➜ Bấm <strong>Lưu</strong>.</li>
+                  <li>Bấm <strong>Triển khai (Deploy) ➜ Tùy chọn triển khai mới (New deployment)</strong> ➜ Chọn <strong>Ứng dụng web (Web app)</strong>:
+                    <ul className="list-disc list-inside pl-4 mt-0.5 text-[10px] text-stone-500 space-y-0.5">
+                      <li>Thực thi dưới dạng: <strong>Tôi (Me)</strong></li>
+                      <li>Ai có quyền truy cập: <strong>Bất kỳ ai (Anyone)</strong></li>
+                    </ul>
+                  </li>
+                  <li>Copy <strong>Web App URL</strong> và dán vào ô bên trên ➜ Bấm <strong>Kiểm tra kết nối</strong>.</li>
+                </ol>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -1621,18 +1965,22 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
             id="save-api-config-btn"
             type="button"
             onClick={handleSave}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-all active:scale-95 cursor-pointer ${activeTab === 'kling'
-              ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-200'
-              : activeProvider === 'gpt-image-2'
-                ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
-                : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-all active:scale-95 cursor-pointer ${activeTab === 'storage'
+              ? 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'
+              : activeTab === 'kling'
+                ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-200'
+                : activeProvider === 'gpt-image-2'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
               }`}
           >
-            {activeTab === 'kling'
-              ? 'Lưu cấu hình Kling AI Video'
-              : activeProvider === 'gpt-image-2'
-                ? 'Lưu và Sử dụng GPT-Image-2'
-                : 'Lưu và Sử dụng Gemini'}
+            {activeTab === 'storage'
+              ? 'Lưu cấu hình Drive & Sheet'
+              : activeTab === 'kling'
+                ? 'Lưu cấu hình Kling AI Video'
+                : activeProvider === 'gpt-image-2'
+                  ? 'Lưu và Sử dụng GPT-Image-2'
+                  : 'Lưu và Sử dụng Gemini'}
           </button>
         </div>
       </div>

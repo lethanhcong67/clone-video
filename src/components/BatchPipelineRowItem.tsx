@@ -95,7 +95,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
   const [isGalleryPickerOpen, setIsGalleryPickerOpen] = useState<'start' | 'end' | null>(null);
 
   const isRowProcessing = item.status === 'processing';
-  const isRowCompleted = item.status === 'completed' && Boolean(item.resultImageUrl);
+  const isRowCompleted = (item.status === 'completed' || Boolean(item.resultImageUrl)) && Boolean(item.resultImageUrl);
   const isRowError = item.status === 'error';
   const hasVideo = Boolean(item.videoUrl);
   const isVideoGenerating = item.videoStatus === 'generating';
@@ -505,7 +505,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => onOpenLightbox(item.dataUrl, `Ảnh gốc: ${item.name}`)}
+                  onClick={() => onOpenLightbox(item.dataUrl || item.previewUrl, `Ảnh gốc: ${item.name}`)}
                   className="text-stone-400 hover:text-stone-700 p-1 rounded hover:bg-stone-200/60 transition-colors cursor-pointer"
                   title="Phóng to ảnh gốc"
                 >
@@ -517,11 +517,12 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
             <div
               draggable={true}
               onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', item.dataUrl);
+                const imgSource = item.dataUrl || item.previewUrl;
+                e.dataTransfer.setData('text/plain', imgSource);
                 e.dataTransfer.setData(
                   'application/json',
                   JSON.stringify({
-                    url: item.dataUrl,
+                    url: imgSource,
                     name: `Ảnh gốc: ${item.name}`,
                     type: 'original-image',
                     itemId: item.id,
@@ -533,7 +534,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
               title="Kéo ảnh gốc này thả vào ô Ảnh Đầu hoặc Ảnh Cuối của Video"
             >
               <img
-                src={item.dataUrl}
+                src={item.dataUrl || item.previewUrl}
                 alt={`Original ${item.name}`}
                 referrerPolicy="no-referrer"
                 className="w-full h-full object-contain transition-all duration-200 pointer-events-none"
@@ -541,7 +542,7 @@ export const BatchPipelineRowItem: React.FC<BatchPipelineRowItemProps> = ({
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                 <button
                   type="button"
-                  onClick={() => onOpenLightbox(item.dataUrl, `Ảnh gốc: ${item.name}`)}
+                  onClick={() => onOpenLightbox(item.dataUrl || item.previewUrl, `Ảnh gốc: ${item.name}`)}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/95 text-stone-900 text-xs font-semibold shadow-md hover:bg-white cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5" />

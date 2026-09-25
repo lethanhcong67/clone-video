@@ -166,21 +166,21 @@ export const HistoryGalleryModal: React.FC<HistoryGalleryModalProps> = ({
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-800 bg-stone-950/80">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-950/40">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-600 to-emerald-500 flex items-center justify-center text-white shadow-lg shadow-teal-950/40">
               <Database className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-white tracking-tight">
-                  Kho Lưu Trữ & Lịch Sử Tạo AI (Supabase Cloud)
+                  Kho Lưu Trữ & Lịch Sử Tạo AI (Google Drive & Sheets)
                 </h2>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  Đã kết nối Bucket `media_assets`
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-500/10 border border-teal-500/30 text-teal-400">
+                  <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse"></span>
+                  {supabaseStatus.ok ? (supabaseStatus.message || 'Đã kết nối') : 'Bộ nhớ Cloud'}
                 </span>
               </div>
               <p className="text-xs text-stone-400">
-                Toàn bộ video, ảnh AI, prompt và thông số tạo đã được lưu trữ vĩnh viễn trên Cloud.
+                Toàn bộ ảnh AI, prompt và thông số tạo được lưu trữ trực tiếp trên Google Drive & Google Sheets.
               </p>
             </div>
           </div>

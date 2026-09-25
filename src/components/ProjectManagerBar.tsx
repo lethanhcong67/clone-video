@@ -134,8 +134,8 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
         name: projectNameInput.trim(),
         author_name: authorNameInput.trim(),
         description: descriptionInput.trim(),
-        settings: cloneCurrentWorkspace ? currentSettings : undefined,
-        uploaded_outfits: cloneCurrentWorkspace ? currentUploadedOutfits : [],
+        settings: currentSettings,
+        uploaded_outfits: (cloneCurrentWorkspace || currentUploadedOutfits.length > 0) ? currentUploadedOutfits : [],
         items: cloneCurrentWorkspace ? currentItems : [],
       });
 
@@ -174,17 +174,18 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
   const handleDeleteProject = async (project: ProjectRecord, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!project.id) return;
-    const confirm = window.confirm(`Bạn có chắc muốn xóa vĩnh viễn dự án "${project.name}" khỏi Supabase?`);
+    const confirm = window.confirm(`Bạn có chắc muốn xóa vĩnh viễn dự án "${project.name}" không? Toàn bộ hình ảnh đã lưu trên Google Drive của dự án cũng sẽ bị xóa.`);
     if (!confirm) return;
 
     setDeletingProjectId(project.id);
+    showToast(`Đang xóa dự án "${project.name}" và dọn dẹp ảnh trên Google Drive...`, 'info');
     try {
       const ok = await deleteProject(project.id);
       if (ok) {
         setProjectsList((prev) => prev.filter((p) => p.id !== project.id));
-        showToast(`Đã xóa dự án "${project.name}".`, 'info');
+        showToast(`Đã xóa dự án "${project.name}" và hình ảnh Drive thành công!`, 'success');
       } else {
-        showToast('Không thể xóa dự án trên Supabase.', 'warning');
+        showToast('Không thể xóa dự án. Vui lòng thử lại.', 'warning');
       }
     } catch (err: any) {
       showToast(err?.message || 'Lỗi khi xóa dự án.', 'warning');
@@ -400,7 +401,7 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
               }
               setProjectNameInput('');
               setDescriptionInput('');
-              setCloneCurrentWorkspace(false);
+              setCloneCurrentWorkspace(currentItems.length > 0 || currentUploadedOutfits.length > 0);
               setIsNewProjectModalOpen(true);
             }}
             disabled={isGenerating}
@@ -561,7 +562,7 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
               </div>
 
               {/* Clone option */}
-              {currentItems.length > 0 && (
+              {(currentItems.length > 0 || currentUploadedOutfits.length > 0) && (
                 <div className="p-3 bg-stone-950 rounded-xl border border-stone-800 flex items-start gap-2.5">
                   <input
                     type="checkbox"
@@ -572,10 +573,10 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
                   />
                   <label htmlFor="clone-workspace-checkbox" className="text-xs text-stone-300 cursor-pointer">
                     <span className="font-semibold block text-stone-200">
-                      Sao chép {currentItems.length} ảnh và các thiết lập hiện tại vào dự án mới này
+                      Sao chép {currentItems.length > 0 ? `${currentItems.length} ảnh` : ''} {currentUploadedOutfits.length > 0 ? `${currentUploadedOutfits.length} ảnh mẫu sản phẩm` : ''} và prompt thiết lập vào dự án mới này
                     </span>
                     <span className="text-[11px] text-stone-400">
-                      Nếu không chọn, dự án mới sẽ bắt đầu với danh sách trống sạch sẽ.
+                      Dữ liệu sẽ được tải lên Google Drive và lưu vào Google Sheets của dự án này.
                     </span>
                   </label>
                 </div>
@@ -825,16 +826,34 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
                     const completedCount = proj.items?.filter((it) => it.status === 'completed').length || 0;
                     const videoPromptsCount = proj.items?.filter((it) => it.videoPrompt && it.videoPrompt.trim().length > 0).length || 0;
 
+                    const isDeleting = deletingProjectId === proj.id;
+
                     return (
                       <div
                         key={proj.id}
-                        onClick={() => handleSelectAndLoadProject(proj)}
-                        className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group ${
-                          isCurrent
-                            ? 'bg-emerald-950/30 border-emerald-500/50 shadow-md shadow-emerald-950/20'
-                            : 'bg-stone-950 border-stone-800/80 hover:border-amber-500/60 hover:bg-stone-900/80'
+                        onClick={() => {
+                          if (isDeleting) return;
+                          handleSelectAndLoadProject(proj);
+                        }}
+                        className={`p-4 rounded-2xl border transition-all relative overflow-hidden flex flex-col justify-between group ${
+                          isDeleting
+                            ? 'opacity-80 border-rose-500/50 bg-rose-950/20 cursor-wait'
+                            : isCurrent
+                              ? 'bg-emerald-950/30 border-emerald-500/50 shadow-md shadow-emerald-950/20 cursor-pointer'
+                              : 'bg-stone-950 border-stone-800/80 hover:border-amber-500/60 hover:bg-stone-900/80 cursor-pointer'
                         }`}
                       >
+                        {/* Loading Overlay when deleting */}
+                        {isDeleting && (
+                          <div className="absolute inset-0 bg-stone-950/90 backdrop-blur-xs z-20 flex flex-col items-center justify-center p-4 text-center animate-in fade-in duration-200">
+                            <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center mb-2 shadow-inner">
+                              <RefreshCw className="w-5 h-5 text-rose-400 animate-spin" />
+                            </div>
+                            <span className="text-xs font-bold text-rose-300">Đang xóa dự án & ảnh...</span>
+                            <span className="text-[11px] text-stone-400 mt-0.5">Dọn dẹp Google Drive & Google Sheet</span>
+                          </div>
+                        )}
+
                         <div>
                           {/* Top row: Name & Active badge */}
                           <div className="flex items-start justify-between gap-2">
@@ -893,11 +912,22 @@ export const ProjectManagerBar: React.FC<ProjectManagerBarProps> = ({
                             <button
                               type="button"
                               onClick={(e) => handleDeleteProject(proj, e)}
-                              disabled={deletingProjectId === proj.id}
-                              className="p-1.5 text-stone-500 hover:text-rose-400 hover:bg-stone-800 rounded-lg transition-colors"
-                              title="Xóa dự án"
+                              disabled={Boolean(deletingProjectId)}
+                              className={`p-1.5 rounded-lg transition-all flex items-center gap-1.5 text-xs font-semibold ${
+                                isDeleting
+                                  ? 'bg-rose-950/60 text-rose-400 border border-rose-800/60 cursor-wait'
+                                  : 'text-stone-500 hover:text-rose-400 hover:bg-stone-800/80'
+                              }`}
+                              title={isDeleting ? 'Đang xóa...' : 'Xóa vĩnh viễn dự án'}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              {isDeleting ? (
+                                <>
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                                  <span className="text-[11px] text-rose-300">Đang xóa...</span>
+                                </>
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
                             </button>
 
                             <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-400 group-hover:text-amber-300">

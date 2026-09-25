@@ -1,5 +1,15 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { ProjectRecord } from '../types';
+import {
+  getGoogleWebAppUrl,
+  testGoogleConnection,
+  saveGenerationRecordToGoogle,
+  fetchGenerationHistoryFromGoogle,
+  saveProjectToGoogle,
+  fetchProjectsFromGoogle,
+  uploadMediaToGoogleDrive,
+  deleteProjectFromGoogle,
+} from './googleStorageService';
 
 const meta = import.meta as any;
 const SUPABASE_URL = meta.env?.VITE_SUPABASE_URL || 'https://uncjoofippvcytechczr.supabase.co';
@@ -22,6 +32,8 @@ export interface GenerationRecord {
   error_message?: string | null;
   created_at?: string;
   updated_at?: string;
+  input_base64?: string | null;
+  output_base64?: string | null;
 }
 
 // Client-side Supabase client singleton
@@ -29,7 +41,6 @@ let supabaseInstance: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient | null {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.warn('[Supabase] Chưa cấu hình VITE_SUPABASE_URL hoặc VITE_SUPABASE_ANON_KEY trong .env');
     return null;
   }
   if (!supabaseInstance) {
@@ -43,12 +54,27 @@ export function getSupabaseClient(): SupabaseClient | null {
 }
 
 /**
- * Check connection status with Supabase Database and Storage
+ * Check connection status with Google Drive/Sheets or Supabase
  */
 export async function testSupabaseConnection(): Promise<{ ok: boolean; message: string; count?: number }> {
+  // If Google WebApp URL is configured, prioritize testing Google Drive/Sheets
+  const googleUrl = getGoogleWebAppUrl();
+  if (googleUrl) {
+    const googleRes = await testGoogleConnection();
+    if (googleRes.ok) {
+      return {
+        ok: true,
+        message: `Đã kết nối Google Sheets: ${googleRes.spreadsheetName || 'AI_History'} | Drive: ${googleRes.folderName || 'Root'}`,
+      };
+    }
+  }
+
   const client = getSupabaseClient();
   if (!client) {
-    return { ok: false, message: 'Chưa cấu hình Supabase API keys' };
+    if (googleUrl) {
+      return { ok: false, message: 'Không thể kết nối đến Google Apps Script' };
+    }
+    return { ok: false, message: 'Chưa cấu hình Google Apps Script hoặc Supabase' };
   }
 
   try {
@@ -57,8 +83,7 @@ export async function testSupabaseConnection(): Promise<{ ok: boolean; message: 
       .select('*', { count: 'exact', head: true });
 
     if (error) {
-      // If table does not exist or permission denied
-      console.warn('[Supabase] Lỗi truy vấn bảng generations:', error);
+      console.warn('[Storage] Lỗi truy vấn bảng generations:', error);
       return { ok: false, message: `Lỗi kết nối bảng: ${error.message}` };
     }
 
@@ -89,14 +114,25 @@ export function dataUrlToBlob(dataUrl: string): Blob {
 }
 
 /**
- * Upload image, video, or dataUrl to Supabase Storage Bucket
+ * Upload image, video, or dataUrl to Google Drive (or fallback Supabase Storage Bucket)
  */
 export async function uploadMediaToSupabase(
   source: string | Blob | File,
   filename: string,
   folder: 'inputs' | 'outputs' | 'thumbnails' = 'outputs'
 ): Promise<string | null> {
-  // 1. Try Backend Proxy first (bypasses Supabase Storage RLS policies with service_role_key)
+  // 1. Prioritize Google Drive upload if Google Web App URL is configured
+  const googleUrl = getGoogleWebAppUrl();
+  if (googleUrl) {
+    try {
+      const driveUrl = await uploadMediaToGoogleDrive(source, filename);
+      if (driveUrl) return driveUrl;
+    } catch (e) {
+      console.warn('[Google Storage] Lỗi upload Drive, thử fallback:', e);
+    }
+  }
+
+  // 2. Try Backend Proxy first (bypasses Supabase Storage RLS policies with service_role_key)
   try {
     let dataUrlPayload: string | null = null;
     if (typeof source === 'string') {
@@ -131,7 +167,7 @@ export async function uploadMediaToSupabase(
     console.warn('[Supabase Storage] Backend proxy upload không khả dụng, thử client upload:', proxyErr);
   }
 
-  // 2. Client-side fallback upload
+  // 3. Client-side fallback upload
   const client = getSupabaseClient();
   if (!client) return null;
 
@@ -193,11 +229,23 @@ export async function uploadMediaToSupabase(
 }
 
 /**
- * Insert or update a generation record in PostgreSQL
+ * Insert or update a generation record (Google Drive/Sheets or Supabase PostgreSQL)
  */
 export async function saveGenerationRecord(
   record: GenerationRecord
 ): Promise<GenerationRecord | null> {
+  // 1. Prioritize Google Drive & Google Sheets
+  const googleUrl = getGoogleWebAppUrl();
+  if (googleUrl) {
+    try {
+      const savedGoogle = await saveGenerationRecordToGoogle(record);
+      if (savedGoogle) return savedGoogle;
+    } catch (e) {
+      console.warn('[Google Storage] Lỗi lưu Google Sheets, thử fallback:', e);
+    }
+  }
+
+  // 2. Supabase fallback
   const client = getSupabaseClient();
   if (!client) return null;
 
@@ -236,13 +284,26 @@ export async function saveGenerationRecord(
 }
 
 /**
- * Fetch generation records with filtering and pagination
+ * Fetch generation records with filtering and pagination (Google Sheets or Supabase)
  */
 export async function fetchGenerationHistory(options?: {
   taskType?: string;
   limit?: number;
   offset?: number;
 }): Promise<{ items: GenerationRecord[]; total: number }> {
+  // 1. Check Google Sheets first
+  const googleUrl = getGoogleWebAppUrl();
+  if (googleUrl) {
+    try {
+      const googleHistory = await fetchGenerationHistoryFromGoogle(options);
+      if (googleHistory.items.length > 0 || !getSupabaseClient()) {
+        return googleHistory;
+      }
+    } catch (e) {
+      console.warn('[Google Storage] Lỗi tải lịch sử từ Google Sheets, thử fallback:', e);
+    }
+  }
+
   const client = getSupabaseClient();
   if (!client) return { items: [], total: 0 };
 
@@ -330,15 +391,20 @@ export async function deleteGenerationRecord(
 }
 
 // ==========================================
-// PROJECT / SESSION MANAGEMENT API (SUPABASE)
+// PROJECT / SESSION MANAGEMENT API
 // ==========================================
 
 /**
  * Fetch list of all projects ordered by newest updated
  */
 export async function fetchProjects(): Promise<ProjectRecord[]> {
+  const googleUrl = getGoogleWebAppUrl();
+  if (googleUrl || !getSupabaseClient()) {
+    return await fetchProjectsFromGoogle();
+  }
+
   const client = getSupabaseClient();
-  if (!client) return [];
+  if (!client) return await fetchProjectsFromGoogle();
 
   try {
     const { data, error } = await client
@@ -347,14 +413,14 @@ export async function fetchProjects(): Promise<ProjectRecord[]> {
       .order('updated_at', { ascending: false });
 
     if (error) {
-      console.warn('[Supabase Projects] Lỗi tải danh sách dự án:', error);
-      return [];
+      console.warn('[Projects] Lỗi tải danh sách dự án từ Supabase, chuyển sang local:', error);
+      return await fetchProjectsFromGoogle();
     }
 
     return (data as ProjectRecord[]) || [];
   } catch (err) {
-    console.error('[Supabase Projects] Exception khi tải dự án:', err);
-    return [];
+    console.error('[Projects] Exception khi tải dự án:', err);
+    return await fetchProjectsFromGoogle();
   }
 }
 
@@ -362,26 +428,8 @@ export async function fetchProjects(): Promise<ProjectRecord[]> {
  * Fetch a single project by ID with full state
  */
 export async function fetchProjectById(id: string): Promise<ProjectRecord | null> {
-  const client = getSupabaseClient();
-  if (!client) return null;
-
-  try {
-    const { data, error } = await client
-      .from('projects')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) {
-      console.warn('[Supabase Projects] Lỗi tải chi tiết dự án:', error);
-      return null;
-    }
-
-    return data as ProjectRecord;
-  } catch (err) {
-    console.error('[Supabase Projects] Exception khi tải dự án theo ID:', err);
-    return null;
-  }
+  const projects = await fetchProjects();
+  return projects.find((p) => p.id === id) || null;
 }
 
 /**
@@ -539,22 +587,26 @@ export async function sanitizeAndUploadProjectItems(items: any[]): Promise<any[]
 }
 
 /**
- * Sanitize & upload reference outfits images to Supabase Storage
+ * Sanitize & preserve reference outfits images for project storage
  */
 export async function sanitizeAndUploadOutfits(outfits: any[]): Promise<any[]> {
   if (!Array.isArray(outfits)) return [];
-  return Promise.all(
+  return await Promise.all(
     outfits.map(async (outfit, idx) => {
       const sanitized = { ...outfit };
-      if (sanitized.previewUrl?.startsWith('data:')) {
-        sanitized.previewUrl = await uploadOrCompressImage(
-          sanitized.previewUrl,
-          `outfit_${sanitized.id || idx}.jpg`,
-          'inputs'
-        );
+      const rawUrl = sanitized.dataUrl || sanitized.previewUrl;
+      if (rawUrl && typeof rawUrl === 'string' && (rawUrl.startsWith('data:') || rawUrl.startsWith('blob:'))) {
+        const uploadedUrl = await uploadOrCompressImage(rawUrl, `outfit_${sanitized.id || idx}.jpg`, 'inputs');
+        if (uploadedUrl) {
+          sanitized.dataUrl = uploadedUrl;
+          sanitized.previewUrl = uploadedUrl;
+        }
       }
-      if (sanitized.dataUrl?.startsWith('data:')) {
-        delete sanitized.dataUrl; // previewUrl is sufficient once uploaded
+      if (!sanitized.dataUrl && sanitized.previewUrl) {
+        sanitized.dataUrl = sanitized.previewUrl;
+      }
+      if (!sanitized.previewUrl && sanitized.dataUrl) {
+        sanitized.previewUrl = sanitized.dataUrl;
       }
       return sanitized;
     })
@@ -562,7 +614,7 @@ export async function sanitizeAndUploadOutfits(outfits: any[]): Promise<any[]> {
 }
 
 /**
- * Create a new project / session record in Supabase
+ * Create a new project / session record (Google Sheets / LocalStorage / Supabase)
  */
 export async function createProject(project: {
   name: string;
@@ -572,8 +624,13 @@ export async function createProject(project: {
   uploaded_outfits?: any;
   items?: any;
 }): Promise<ProjectRecord | null> {
+  const googleUrl = getGoogleWebAppUrl();
+  if (googleUrl || !getSupabaseClient()) {
+    return await saveProjectToGoogle(project);
+  }
+
   const client = getSupabaseClient();
-  if (!client) return null;
+  if (!client) return await saveProjectToGoogle(project);
 
   try {
     const [optimizedOutfits, optimizedItems] = await Promise.all([
@@ -599,26 +656,31 @@ export async function createProject(project: {
       .single();
 
     if (error) {
-      console.warn('[Supabase Projects] Lỗi tạo dự án mới:', error);
-      return null;
+      console.warn('[Projects] Lỗi tạo dự án mới trên Supabase, lưu local/Google:', error);
+      return await saveProjectToGoogle(project);
     }
 
     return data as ProjectRecord;
   } catch (err) {
-    console.error('[Supabase Projects] Exception khi tạo dự án:', err);
-    return null;
+    console.error('[Projects] Exception khi tạo dự án:', err);
+    return await saveProjectToGoogle(project);
   }
 }
 
 /**
- * Save / Update an existing project / session in Supabase
+ * Save / Update an existing project / session in Google Sheets / LocalStorage / Supabase
  */
 export async function updateProject(
   id: string,
   updates: Partial<ProjectRecord>
 ): Promise<ProjectRecord | null> {
+  const googleUrl = getGoogleWebAppUrl();
+  if (googleUrl || !getSupabaseClient()) {
+    return await saveProjectToGoogle({ id, ...updates } as any);
+  }
+
   const client = getSupabaseClient();
-  if (!client) return null;
+  if (!client) return await saveProjectToGoogle({ id, ...updates } as any);
 
   try {
     const payload: Record<string, any> = {
@@ -642,38 +704,37 @@ export async function updateProject(
       .single();
 
     if (error) {
-      console.warn('[Supabase Projects] Lỗi cập nhật dự án:', error);
-      return null;
+      console.warn('[Projects] Lỗi cập nhật dự án trên Supabase, lưu local/Google:', error);
+      return await saveProjectToGoogle({ id, ...updates } as any);
     }
 
     return data as ProjectRecord;
   } catch (err) {
-    console.error('[Supabase Projects] Exception khi cập nhật dự án:', err);
-    return null;
+    console.error('[Projects] Exception khi cập nhật dự án:', err);
+    return await saveProjectToGoogle({ id, ...updates } as any);
   }
 }
 
 /**
- * Delete a project from Supabase
+ * Delete a project from Google Sheets / LocalStorage / Supabase
  */
 export async function deleteProject(id: string): Promise<boolean> {
+  const googleUrl = getGoogleWebAppUrl();
+  if (googleUrl || !getSupabaseClient()) {
+    return await deleteProjectFromGoogle(id);
+  }
+
   const client = getSupabaseClient();
-  if (!client) return false;
+  if (!client) return await deleteProjectFromGoogle(id);
 
   try {
-    const { error } = await client
+    await client
       .from('projects')
       .delete()
       .eq('id', id);
-
-    if (error) {
-      console.warn('[Supabase Projects] Lỗi xóa dự án:', error);
-      return false;
-    }
-
-    return true;
   } catch (err) {
-    console.error('[Supabase Projects] Exception khi xóa dự án:', err);
-    return false;
+    console.warn('[Projects] Lỗi xóa dự án Supabase, xóa local/Google:', err);
   }
+
+  return await deleteProjectFromGoogle(id);
 }

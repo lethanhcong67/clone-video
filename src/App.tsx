@@ -25,6 +25,7 @@ import { downloadAllAsZip } from './utils/imageUtils';
 import { createSampleBatchItem, generateFallbackResultImage } from './utils/sampleGenerator';
 import { generateFullPromptText } from './utils/promptHelper';
 import { uploadMediaToSupabase, saveGenerationRecord, updateProject, fetchProjectById } from './utils/supabaseClient';
+import { uploadMediaToGoogleDrive, getGoogleWebAppUrl } from './utils/googleStorageService';
 
 const API_STORAGE_KEY = 'ai_image_api_config_v2';
 
@@ -246,7 +247,7 @@ export default function App() {
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [extractorResetKey, setExtractorResetKey] = useState(0);
 
-  // Check health and API key on mount
+  // Check health, API keys, and auto-restore active project on mount
   useEffect(() => {
     fetch('/api/health')
       .then((res) => res.json())
@@ -258,6 +259,15 @@ export default function App() {
       .catch((err) => {
         console.warn('API health check error:', err);
       });
+
+    const activeId = localStorage.getItem('ai_app_active_project_id');
+    if (activeId) {
+      fetchProjectById(activeId).then((proj) => {
+        if (proj) {
+          handleSelectProject(proj);
+        }
+      }).catch((e) => console.warn('Lỗi tự động nạp dự án:', e));
+    }
   }, []);
 
   // Prevent accidental page close or refresh if there are tasks or generated results
@@ -324,16 +334,56 @@ export default function App() {
     isSkipDirtyTrackingRef.current = true;
     setExtractorResetKey((prev) => prev + 1);
     setCurrentProject(project);
-    if (project.settings) {
-      setSettings((prev) => ({ ...prev, ...project.settings }));
+    if (project.id) {
+      localStorage.setItem('ai_app_active_project_id', project.id);
     }
+    const s = (project.settings || {}) as any;
+    setSettings({
+      enableCharacter: Boolean(s.enableCharacter),
+      characterPrompt: s.characterPrompt || '',
+      enableOutfit: s.enableOutfit !== undefined ? s.enableOutfit : true,
+      productName: s.productName || '',
+      productDescription: s.productDescription || '',
+      outfitPrompt: s.outfitPrompt || 'thay sản phẩm ở hình image2 sang hình image1',
+      removeSubtitles: s.removeSubtitles !== undefined ? s.removeSubtitles : true,
+      preservePose: s.preservePose !== undefined ? s.preservePose : true,
+      preserveBackground: s.preserveBackground !== undefined ? s.preserveBackground : true,
+      backgroundPrompt: s.backgroundPrompt || '',
+      stylePreset: s.stylePreset || 'photorealistic',
+      aspectRatio: s.aspectRatio || '9:16',
+      concurrency: s.concurrency || 5,
+      variationsPerItem: s.variationsPerItem || 1,
+      selectedCharacterPresetId: s.selectedCharacterPresetId,
+      selectedOutfitPresetId: s.selectedOutfitPresetId,
+      selectedOutfitRefId: s.selectedOutfitRefId,
+      defaultCameraMotion: s.defaultCameraMotion,
+    });
     if (project.uploaded_outfits && project.uploaded_outfits.length > 0) {
-      setUploadedOutfits(project.uploaded_outfits);
+      const normalized = project.uploaded_outfits.map((o) => ({
+        ...o,
+        previewUrl: o.previewUrl || o.dataUrl,
+        dataUrl: o.dataUrl || o.previewUrl,
+      }));
+      setUploadedOutfits(normalized);
     } else {
       setUploadedOutfits([]);
     }
     if (project.items && project.items.length > 0) {
-      setItems(project.items);
+      const normalizedItems = project.items.map((it) => {
+        const effectiveResult = it.resultImageUrl || (Array.isArray(it.resultImageUrls) && it.resultImageUrls.length > 0 ? it.resultImageUrls[0] : undefined);
+        return {
+          ...it,
+          previewUrl: it.previewUrl || it.dataUrl,
+          dataUrl: it.dataUrl || it.previewUrl,
+          resultImageUrl: effectiveResult,
+          resultImageUrls: Array.isArray(it.resultImageUrls) && it.resultImageUrls.length > 0
+            ? it.resultImageUrls
+            : (effectiveResult ? [effectiveResult] : undefined),
+          status: effectiveResult ? 'completed' : (it.status || 'idle'),
+          progress: effectiveResult ? 100 : (it.progress || 0),
+        };
+      });
+      setItems(normalizedItems);
       setSelectedItemId(project.items[0].id);
     } else {
       setItems([]);
@@ -342,17 +392,6 @@ export default function App() {
     setIsProjectDirty(false);
     setLastSavedAt(new Date(project.updated_at || project.created_at || Date.now()));
   };
-
-  // Watch for workspace changes to mark dirty state for active project
-  useEffect(() => {
-    if (isSkipDirtyTrackingRef.current) {
-      isSkipDirtyTrackingRef.current = false;
-      return;
-    }
-    if (currentProject) {
-      setIsProjectDirty(true);
-    }
-  }, [items, settings, uploadedOutfits]);
 
   // Keep refs in sync for non-blocking auto-save operations
   const currentProjectRef = useRef<ProjectRecord | null>(currentProject);
@@ -373,7 +412,7 @@ export default function App() {
     uploadedOutfitsRef.current = uploadedOutfits;
   }, [uploadedOutfits]);
 
-  // Non-blocking auto-save project when any image or video finishes generating
+  // Non-blocking auto-save project when any image or video finishes generating or workspace updates
   const triggerAutoSaveProject = useCallback(async (latestItems: BatchImageItem[]) => {
     const proj = currentProjectRef.current;
     if (!proj?.id) return;
@@ -388,6 +427,9 @@ export default function App() {
 
     try {
       const updated = await updateProject(proj.id, {
+        name: proj.name,
+        author_name: proj.author_name,
+        description: proj.description,
         settings: settingsRef.current,
         uploaded_outfits: uploadedOutfitsRef.current,
         items: latestItems,
@@ -397,7 +439,7 @@ export default function App() {
         setCurrentProject(updated);
         setIsProjectDirty(false);
         setLastSavedAt(new Date());
-        console.log(`[Auto-Save Project] Đã tự động cập nhật dự án "${updated.name}" lên Supabase Cloud!`);
+        console.log(`[Auto-Save Project] Đã tự động đồng bộ dự án "${updated.name}" lên Google Drive & Sheet!`);
       }
     } catch (err) {
       console.warn('[Auto-Save Project Warning]:', err);
@@ -413,13 +455,30 @@ export default function App() {
     }
   }, []);
 
+  // Watch for workspace changes: mark dirty state and auto-save (debounced 4s) to Google Drive & Sheets
+  useEffect(() => {
+    if (isSkipDirtyTrackingRef.current) {
+      isSkipDirtyTrackingRef.current = false;
+      return;
+    }
+    if (currentProject?.id) {
+      setIsProjectDirty(true);
+      const timer = setTimeout(() => {
+        if (!isGenerating && currentProjectRef.current?.id) {
+          triggerAutoSaveProject(items);
+        }
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [items, settings, uploadedOutfits, currentProject?.id]);
+
   // Calculate if AI generation for images or videos is currently in progress
   const isGenerating =
     isProcessing ||
     activeProcessingIds.length > 0 ||
     items.some((it) => it.status === 'processing' || it.videoStatus === 'generating');
 
-  // Handler: Save current project to Supabase (update existing project with latest state)
+  // Handler: Save current project to Google Sheets & Drive (update existing project with latest state)
   const handleSaveCurrentProject = async (): Promise<boolean> => {
     if (isGenerating) {
       showToast('Đang có tiến trình tạo ảnh hoặc video AI đang chạy. Không thể lưu dự án lúc này, vui lòng đợi hoàn tất!', 'warning');
@@ -434,6 +493,9 @@ export default function App() {
     setIsProjectSaving(true);
     try {
       const updated = await updateProject(currentProject.id, {
+        name: currentProject.name,
+        author_name: currentProject.author_name,
+        description: currentProject.description,
         settings,
         uploaded_outfits: uploadedOutfits,
         items,
@@ -443,10 +505,10 @@ export default function App() {
         setCurrentProject(updated);
         setIsProjectDirty(false);
         setLastSavedAt(new Date());
-        showToast(`Đã cập nhật các thay đổi mới nhất vào dự án "${updated.name}" trên Supabase Cloud!`, 'success');
+        showToast(`Đã cập nhật các thay đổi mới nhất vào dự án "${updated.name}" trên Google Drive & Sheet!`, 'success');
         return true;
       } else {
-        showToast('Không thể cập nhật dự án lên Supabase.', 'warning');
+        showToast('Không thể cập nhật dự án lên Google Sheet.', 'warning');
         return false;
       }
     } catch (err: any) {
@@ -557,6 +619,7 @@ export default function App() {
     setItems((prev) =>
       prev.map((item) => ({
         ...item,
+        customPrompt: undefined,
         appliedConfig: {
           // Explicitly follow settings.enableCharacter
           enableCharacter: isCharActive,
@@ -571,6 +634,7 @@ export default function App() {
           outfitImageUrl: uploadedOutfit?.previewUrl || uploadedOutfit?.dataUrl || null,
           outfitImageName: uploadedOutfit?.name || null,
           preservePose: settings.preservePose,
+          customPrompt: undefined,
           appliedAt: Date.now(),
         },
       }))
@@ -816,37 +880,55 @@ export default function App() {
             showToast(`Đã tự động chuyển đổi và tạo ảnh thành công qua ${currentAttempt.name}!`, 'success');
           }
 
-          // Auto-save generated image & prompt to Supabase Cloud in background
-          (async () => {
-            try {
-              const fileName = `img_${item.name ? item.name.replace(/[^a-zA-Z0-9._-]/g, '_') : Date.now()}.png`;
-              const publicUrl = await uploadMediaToSupabase(data.imageUrl, fileName, 'outputs');
-              await saveGenerationRecord({
-                task_type: 'image_swap',
-                status: 'completed',
-                prompt: rowFullPrompt,
-                output_media_url: publicUrl || data.imageUrl,
-                thumbnail_url: publicUrl || data.imageUrl,
-                model_name: providerToUse === 'gpt-image-2' ? (apiConfig.gptImage?.model || 'gpt-image-2') : (apiConfig.model || 'gemini-3.1-flash-image'),
-                parameters: {
-                  aspectRatio: settings.aspectRatio,
-                  stylePreset: settings.stylePreset,
-                  provider: providerToUse,
-                  enableCharacter: isCharacterEnabled,
-                  enableOutfit: isOutfitEnabled,
-                },
-                input_media: {
-                  item_name: item.name,
-                  product_name: effectiveProductName,
-                },
-              });
-              console.log('[Supabase Cloud] Đã tự động lưu ảnh và Prompt vào Supabase Cloud!');
-            } catch (supaErr) {
-              console.warn('[Supabase Cloud Auto-Save Warning]:', supaErr);
-            }
-          })();
+          let finalImageUrl: string = data.imageUrl;
 
-          return data.imageUrl;
+          // 1. Tải ảnh lên Google Drive (hoặc Cloud Storage) ngay lập tức nếu là Base64
+          if (typeof finalImageUrl === 'string' && finalImageUrl.startsWith('data:')) {
+            try {
+              const uploadedDriveUrl = await uploadMediaToGoogleDrive(
+                finalImageUrl,
+                `result_${item.id || Date.now()}_var${variationIndex}.png`
+              );
+              if (uploadedDriveUrl) {
+                finalImageUrl = uploadedDriveUrl;
+                console.log(`[Google Drive Sync] Đã lưu ảnh thành công lên Drive: ${finalImageUrl}`);
+              }
+            } catch (driveErr) {
+              console.warn('[Google Drive Sync] Lỗi tải lên Drive, tiếp tục với ảnh hiện tại:', driveErr);
+            }
+          }
+
+          // 2. Auto-save generated image to Google Storage gallery if running outside a project session
+          if (!currentProjectRef.current?.id) {
+            (async () => {
+              try {
+                await saveGenerationRecord({
+                  task_type: 'image_swap',
+                  status: 'completed',
+                  prompt: rowFullPrompt,
+                  input_media: item.dataUrl?.startsWith('http') ? { url: item.dataUrl } : undefined,
+                  input_base64: item.dataUrl?.startsWith('data:') ? item.dataUrl : null,
+                  output_base64: finalImageUrl.startsWith('data:') ? finalImageUrl : null,
+                  output_media_url: finalImageUrl,
+                  thumbnail_url: finalImageUrl,
+                  model_name: providerToUse === 'gpt-image-2' ? (apiConfig.gptImage?.model || 'gpt-image-2') : (apiConfig.model || 'gemini-3.1-flash-image'),
+                  parameters: {
+                    aspectRatio: settings.aspectRatio,
+                    stylePreset: settings.stylePreset,
+                    provider: providerToUse,
+                    enableCharacter: isCharacterEnabled,
+                    enableOutfit: isOutfitEnabled,
+                    product_name: effectiveProductName,
+                    item_name: item.name,
+                  },
+                });
+              } catch (storageErr) {
+                console.warn('[Google Storage Auto-Save Warning]:', storageErr);
+              }
+            })();
+          }
+
+          return finalImageUrl;
         } else {
           lastErrorDetail = data.error || (data.needsApiKey ? 'Chưa cấu hình API Key hoặc Khóa API không hợp lệ.' : 'Máy chủ AI không thể tạo ảnh.');
           console.warn(`[Failover] ${currentAttempt.name} trả về lỗi:`, lastErrorDetail);

@@ -253,7 +253,7 @@ export const OutfitSelector: React.FC<OutfitSelectorProps> = ({
                       >
                         <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-stone-200 bg-white shrink-0">
                           <img
-                            src={outfit.previewUrl}
+                            src={outfit.previewUrl || outfit.dataUrl}
                             alt={outfit.name}
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"

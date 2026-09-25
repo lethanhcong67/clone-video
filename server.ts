@@ -222,6 +222,160 @@ async function startServer() {
     }
   });
 
+  // Helper: Nén ảnh Base64 trước khi tải lên Google Drive qua Apps Script (giúp tăng tốc độ 10x - 50x và tránh timeout)
+  async function compressBase64Image(dataUri: string): Promise<string> {
+    if (!dataUri || typeof dataUri !== "string" || !dataUri.startsWith("data:image/")) {
+      return dataUri;
+    }
+    try {
+      const commaIdx = dataUri.indexOf(",");
+      if (commaIdx === -1) return dataUri;
+      const base64Data = dataUri.slice(commaIdx + 1);
+      const buffer = Buffer.from(base64Data, "base64");
+
+      const optimizedBuffer = await sharp(buffer)
+        .resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 80, progressive: true })
+        .toBuffer();
+
+      return `data:image/jpeg;base64,${optimizedBuffer.toString("base64")}`;
+    } catch (e) {
+      return dataUri;
+    }
+  }
+
+  // Google Apps Script Proxy Endpoint (Avoids CORS & handles 302 redirects seamlessly)
+  app.post("/api/google/proxy", async (req, res) => {
+    try {
+      const { targetUrl, payload } = req.body;
+      const rawUrl = targetUrl || process.env.VITE_GOOGLE_WEBAPP_URL;
+
+      if (!rawUrl || typeof rawUrl !== "string") {
+        return res.status(400).json({
+          success: false,
+          error: "Chưa cấu hình Google Apps Script Web App URL. Vui lòng vào Cài đặt để thêm URL.",
+        });
+      }
+
+      let urlToCall = rawUrl.trim();
+      if (urlToCall.endsWith("/edit") || urlToCall.includes("/edit?")) {
+        urlToCall = urlToCall.replace(/\/edit(\?.*)?$/, "/exec");
+      }
+
+      // Tối ưu hóa dung lượng các ảnh base64 trong payload trước khi gửi sang Google Apps Script
+      const optimizedPayload = JSON.parse(JSON.stringify(payload || {}));
+      if (Array.isArray(optimizedPayload.uploaded_outfits)) {
+        for (const outfit of optimizedPayload.uploaded_outfits) {
+          if (outfit?.dataUrl?.startsWith("data:image/")) {
+            outfit.dataUrl = await compressBase64Image(outfit.dataUrl);
+          }
+          if (outfit?.previewUrl?.startsWith("data:image/")) {
+            outfit.previewUrl = await compressBase64Image(outfit.previewUrl);
+          }
+        }
+      }
+      if (Array.isArray(optimizedPayload.items)) {
+        for (const item of optimizedPayload.items) {
+          if (item?.dataUrl?.startsWith("data:image/")) {
+            item.dataUrl = await compressBase64Image(item.dataUrl);
+          }
+          if (item?.previewUrl?.startsWith("data:image/")) {
+            item.previewUrl = await compressBase64Image(item.previewUrl);
+          }
+          if (item?.resultImageUrl?.startsWith("data:image/")) {
+            item.resultImageUrl = await compressBase64Image(item.resultImageUrl);
+          }
+          if (Array.isArray(item?.resultImageUrls)) {
+            for (let i = 0; i < item.resultImageUrls.length; i++) {
+              if (item.resultImageUrls[i]?.startsWith("data:image/")) {
+                item.resultImageUrls[i] = await compressBase64Image(item.resultImageUrls[i]);
+              }
+            }
+          }
+          if (item?.videoStartImageUrl?.startsWith("data:image/")) {
+            item.videoStartImageUrl = await compressBase64Image(item.videoStartImageUrl);
+          }
+          if (item?.videoEndImageUrl?.startsWith("data:image/")) {
+            item.videoEndImageUrl = await compressBase64Image(item.videoEndImageUrl);
+          }
+          if (item?.appliedConfig?.outfitImageUrl?.startsWith("data:image/")) {
+            item.appliedConfig.outfitImageUrl = await compressBase64Image(item.appliedConfig.outfitImageUrl);
+          }
+          if (Array.isArray(item?.appliedConfig?.productReferences)) {
+            for (const ref of item.appliedConfig.productReferences) {
+              if (ref?.dataUrl?.startsWith("data:image/")) {
+                ref.dataUrl = await compressBase64Image(ref.dataUrl);
+              }
+              if (ref?.previewUrl?.startsWith("data:image/")) {
+                ref.previewUrl = await compressBase64Image(ref.previewUrl);
+              }
+            }
+          }
+        }
+      }
+      if (optimizedPayload.input_base64?.startsWith("data:image/")) {
+        optimizedPayload.input_base64 = await compressBase64Image(optimizedPayload.input_base64);
+      }
+      if (optimizedPayload.output_base64?.startsWith("data:image/")) {
+        optimizedPayload.output_base64 = await compressBase64Image(optimizedPayload.output_base64);
+      }
+      if (optimizedPayload.base64?.startsWith("data:image/")) {
+        optimizedPayload.base64 = await compressBase64Image(optimizedPayload.base64);
+      }
+      if (optimizedPayload.dataUrl?.startsWith("data:image/")) {
+        optimizedPayload.dataUrl = await compressBase64Image(optimizedPayload.dataUrl);
+      }
+
+      console.log(`\n📡 [Google Apps Script Proxy] Gửi yêu cầu action="${optimizedPayload?.action || 'unknown'}"`);
+      console.log(`URL: ${urlToCall}`);
+
+      const googleResponse = await fetch(urlToCall, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        body: JSON.stringify(optimizedPayload),
+        redirect: "follow",
+      });
+
+      console.log(`📥 [Google Apps Script Proxy] HTTP Status: ${googleResponse.status}`);
+
+      const responseText = await googleResponse.text();
+
+      // Chỉ báo lỗi phân quyền nếu trang HTML thực sự yêu cầu đăng nhập tài khoản Google
+      if (responseText.includes("accounts.google.com/ServiceLogin") || responseText.includes("accounts.google.com/signin")) {
+        console.error("❌ [Google Proxy Error] Google Apps Script yêu cầu đăng nhập (Chưa phân quyền Anyone):", responseText.substring(0, 300));
+        return res.status(403).json({
+          success: false,
+          error: "Google Apps Script chưa được cấp quyền 'Bất kỳ ai' (Anyone). Vui lòng vào Google Sheet -> Triển khai (Deploy) -> Quản lý bản triển khai (Manage deployments) -> Sửa 'Ai có quyền truy cập' thành 'Bất kỳ ai' (Anyone).",
+        });
+      }
+
+      try {
+        const json = JSON.parse(responseText);
+        return res.json(json);
+      } catch (parseErr) {
+        console.warn("⚠️ [Google Proxy] Phản hồi không phải JSON:", responseText.substring(0, 300));
+        if (googleResponse.ok) {
+          return res.json({
+            success: true,
+            data: responseText,
+          });
+        }
+        return res.status(googleResponse.status || 500).json({
+          success: false,
+          error: `Google Apps Script trả về lỗi (HTTP ${googleResponse.status}): ${responseText.substring(0, 200)}`,
+        });
+      }
+    } catch (err: any) {
+      console.error("❌ [Google Apps Script Proxy Exception]:", err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || "Lỗi máy chủ Node.js khi kết nối tới Google Apps Script",
+      });
+    }
+  });
+
   // Validate API key endpoint for Gemini
   app.post("/api/validate-key", async (req, res) => {
     try {
@@ -1510,16 +1664,27 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
         effectiveProvider = "gpt-image-2";
       }
 
-      // Clean base64 string if it contains data URI prefix
-      const cleanBase64 = (str: string) => {
+      // Clean base64 string or fetch remote image URL (e.g. from Google Drive) to base64
+      const resolveBase64 = async (str: string): Promise<string> => {
         if (!str) return "";
+        if (str.startsWith("http://") || str.startsWith("https://")) {
+          try {
+            const resp = await fetch(str);
+            if (resp.ok) {
+              const arrayBuf = await resp.arrayBuffer();
+              return Buffer.from(arrayBuf).toString("base64");
+            }
+          } catch (e) {
+            console.warn("Lỗi tải ảnh từ URL:", str, e);
+          }
+        }
         if (str.includes(",")) {
           return str.split(",")[1];
         }
         return str;
       };
 
-      const baseOriginal = cleanBase64(originalImageBase64);
+      const baseOriginal = await resolveBase64(originalImageBase64);
 
       // Normalize multi-reference images: image[ref1, ref2, ...]
       // ref1 is ALWAYS originalImageBase64 (the original photo)
@@ -1532,23 +1697,28 @@ ${outfitPrompt ? `User notes: "${outfitPrompt}"` : ""}`,
       }
 
       const rawProductList = Array.isArray(productImages) ? productImages : [];
-      let normalizedProductRefs: NormalizedProductRef[] = rawProductList
-        .map((item: any, idx: number) => {
+      const resolvedProductRefs = await Promise.all(
+        rawProductList.map(async (item: any, idx: number) => {
           const dataStr = typeof item === "string" ? item : (item.data || item.dataUrl || item.previewUrl || "");
           const mime = (typeof item === "object" && item.mimeType) || "image/jpeg";
           const name = (typeof item === "object" && item.name) || `Sản phẩm ${idx + 1}`;
+          const cleanData = await resolveBase64(dataStr);
           return {
             refIndex: idx + 2, // ref2, ref3, ...
-            data: cleanBase64(dataStr),
+            data: cleanData,
             mimeType: mime,
             name,
           };
         })
-        .filter((p) => p.data && p.data.length > 20);
+      );
+
+      let normalizedProductRefs: NormalizedProductRef[] = resolvedProductRefs.filter(
+        (p) => p.data && p.data.length > 20
+      );
 
       // Legacy fallback: if productImages was empty but outfitImageBase64 was provided
       if (normalizedProductRefs.length === 0 && outfitImageBase64) {
-        const cleanedLegacy = cleanBase64(outfitImageBase64);
+        const cleanedLegacy = await resolveBase64(outfitImageBase64);
         if (cleanedLegacy) {
           normalizedProductRefs.push({
             refIndex: 2,

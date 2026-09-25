@@ -44,6 +44,7 @@ export interface BatchImageItem {
   name: string;
   size: number;
   dataUrl: string;
+  previewUrl?: string;
   mimeType: string;
   status: 'idle' | 'processing' | 'completed' | 'error';
   progress: number;
